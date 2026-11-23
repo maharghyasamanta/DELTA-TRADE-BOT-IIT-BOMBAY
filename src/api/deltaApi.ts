@@ -41,7 +41,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
       error: `Invalid JSON from server (${res.status})`,
       code: 'INVALID_JSON',
       status: res.status,
-      source: 'Regime Sentinel Server Proxy',
+      source: 'Delta Trade Bot Server Proxy',
       timestamp: new Date().toISOString(),
     });
   }
@@ -52,7 +52,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
       error: errObj.error || `Request failed with HTTP ${res.status}`,
       code: errObj.code || 'HTTP_ERROR',
       status: res.status,
-      source: errObj.source || 'Regime Sentinel Server Proxy',
+      source: errObj.source || 'Delta Trade Bot Server Proxy',
       timestamp: errObj.timestamp || new Date().toISOString(),
     });
   }

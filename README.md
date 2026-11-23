@@ -1,6 +1,6 @@
-# Regime Sentinel
+# Delta Trade Bot
 
-Read-only market-regime monitor and historical detector evaluation dashboard built with React 19, Vite, Express, Firebase Auth/Firestore, and Gemini structured output.
+Read-only trade-bot market telemetry, signal engine, and historical detector evaluation dashboard built with React 19, Vite, Express, Firebase Auth/Firestore, and Gemini structured output.
 
 > **Advisory Only**: This application never places, routes, or simulates orders, and its deterministic guardrails and Gemini explanations never recommend trading actions.
 
@@ -9,8 +9,8 @@ Read-only market-regime monitor and historical detector evaluation dashboard bui
 - **Phase 1 — Live Market Data Proxies**:
   - **Delta Exchange India** (`api.india.delta.exchange` REST + `wss://socket.india.delta.exchange` bridged via SSE `/api/delta/stream`).
   - **Alpaca Market Data** (`data.alpaca.markets` REST `/api/alpaca/ping`, `/bars`, `/quote/:symbol`, `/trade/:symbol`, `/validate/:symbol` defaulting to `iex` feed).
-- **Phase 2 — Pure Regime Engine (`src/engine/regime.ts`)**:
-  - Rolling Volatility Z-Score, OLS Trend Strength ($R^2 \times \text{sign}(\beta)$), two-sided CUSUM structural change-points, and composite 0–100 Regime Intensity Score.
+- **Phase 2 — Pure Bot Signal Engine (`src/engine/regime.ts`)**:
+  - Rolling Volatility Z-Score, OLS Trend Strength ($R^2 \times \text{sign}(\beta)$), two-sided CUSUM structural change-points, and composite 0–100 Bot Signal Intensity Score.
   - Causal bar-gap detection (`dt > 1.5 * median`) prevents overnight/weekend price jumps from triggering spurious CUSUM spikes.
 - **Phase 3 — Guardrail Rules & Firestore Decision Log**:
   - Deterministic `CONTINUE` / `REDUCE_SIZE` / `PAUSE` / `NO_DECISION` evaluation.

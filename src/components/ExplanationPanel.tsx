@@ -137,7 +137,7 @@ export function ExplanationPanel({
             Structured Metric Explanation
           </h2>
           <p className="text-[11px] text-slate-400">
-            Manual narration of the loaded regime and guardrail numbers only
+            Manual narration of the loaded signal and guardrail numbers only
             {symbol ? (
               <>
                 {' '}
@@ -249,7 +249,7 @@ export function ExplanationPanel({
         {!isLoading && !error && !explanation && isConfigured !== false && (
           <p className="text-xs text-slate-400">
             {symbol
-              ? `Click "Explain these numbers" to send the current ${symbol} regime and guardrail snapshot (${regimeResult.meta.candleCount} candles) to the server-side Gemini endpoint.`
+              ? `Click "Explain these numbers" to send the current ${symbol} signal and guardrail snapshot (${regimeResult.meta.candleCount} candles) to the server-side Gemini endpoint.`
               : 'Select an instrument to enable structured explanation for its computed numbers.'}
           </p>
         )}

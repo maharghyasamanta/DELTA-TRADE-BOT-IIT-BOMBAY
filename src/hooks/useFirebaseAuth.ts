@@ -63,7 +63,7 @@ function extractAuthError(
 function checkLocalStorageAccess(): AuthErrorState | null {
   if (typeof window === 'undefined') return null;
   try {
-    const probeKey = '__regime_sentinel_auth_storage_probe__';
+    const probeKey = '__delta_trade_bot_auth_storage_probe__';
     window.localStorage.setItem(probeKey, '1');
     window.localStorage.removeItem(probeKey);
     return null;

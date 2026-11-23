@@ -162,7 +162,7 @@ export function GuardrailPanel({
               Deterministic Guardrail Evaluation
             </h2>
             <p className="mt-0.5 text-[11px] text-slate-400">
-              Computed strictly from loaded descriptive regime metrics
+              Computed strictly from loaded descriptive signal metrics
               {symbol ? (
                 <>
                   {' '}

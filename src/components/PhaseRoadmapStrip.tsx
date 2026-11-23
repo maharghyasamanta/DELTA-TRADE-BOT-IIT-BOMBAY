@@ -78,7 +78,7 @@ export function PhaseRoadmapStrip({
     },
     {
       phase: 'Phase 2',
-      title: 'Regime Engine & Chart Markers',
+      title: 'Bot Signal Engine & Chart Markers',
       status: 'Active',
       detail: 'Verified live: vol z-score, trend strength, CUSUM markers & 0–100 score',
     },

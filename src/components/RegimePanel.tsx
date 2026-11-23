@@ -54,14 +54,14 @@ export function RegimePanel({
 
   return (
     <section
-      aria-label="Market Regime Statistics"
+      aria-label="Bot Signal Statistics"
       className="flex flex-col rounded-lg border border-slate-800/90 bg-[#111A2E]"
     >
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 px-5 py-3">
         <div className="space-y-0.5">
           <h2 className="font-display text-sm font-semibold text-slate-100">
-            Descriptive Regime Statistics
+            Bot Signal &amp; Volatility Statistics
           </h2>
           <p className="text-[11px] text-slate-400">
             Descriptive statistics of loaded candles only (non-predictive)
@@ -91,10 +91,10 @@ export function RegimePanel({
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 gap-px bg-slate-800/70 sm:grid-cols-2 xl:grid-cols-4">
-        {/* Regime Intensity Score */}
+        {/* Bot Signal Intensity Score */}
         <div className="flex flex-col justify-between bg-[#111A2E] px-5 py-4">
           <span className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
-            Regime Score (0–100)
+            Bot Signal Score (0–100)
           </span>
           <div className="mt-2">
             {hasScore && latest.score !== null ? (
@@ -256,7 +256,7 @@ export function RegimePanel({
               {DEFAULT_CUSUM_H}; resets both accumulators after crossing h.
             </li>
             <li>
-              <span className="text-slate-100">5. Regime Score:</span> clamped 100 × (
+              <span className="text-slate-100">5. Bot Signal Score:</span> clamped 100 × (
               {DEFAULT_SCORE_WEIGHTS.volatility}·clamp01((volZ+1)/4) +{' '}
               {DEFAULT_SCORE_WEIGHTS.trend}·|trend| +{' '}
               {DEFAULT_SCORE_WEIGHTS.cusum}·max(0, 1 − barsSinceCusum/{DEFAULT_CUSUM_DECAY_BARS}))

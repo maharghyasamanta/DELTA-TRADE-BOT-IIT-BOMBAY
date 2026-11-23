@@ -595,7 +595,7 @@ export function EvaluationPanel({
               >
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden="true" />
                 <span className="font-mono">
-                  {report.gapCount} gap(s) detected in loaded history (cross-gap log returns skipped in regime/CUSUM calculation).
+                  {report.gapCount} gap(s) detected in loaded history (cross-gap log returns skipped in signal/CUSUM calculation).
                 </span>
               </div>
             )}
@@ -762,10 +762,10 @@ export function EvaluationPanel({
 
           <div className="rounded border border-slate-800 bg-[#111A2E]/70 p-3 space-y-1.5">
             <div className="text-[11px] font-medium uppercase tracking-wider text-slate-400">
-              Unchanged Causal Regime &amp; Guardrail Constants Used
+              Unchanged Causal Signal &amp; Guardrail Constants Used
             </div>
             <p className="font-mono text-[11px] leading-relaxed text-slate-300">
-              Regime: volWindow={DEFAULT_VOL_WINDOW}, volLookback={DEFAULT_VOL_LOOKBACK}, trendWindow=
+              Signals: volWindow={DEFAULT_VOL_WINDOW}, volLookback={DEFAULT_VOL_LOOKBACK}, trendWindow=
               {DEFAULT_TREND_WINDOW}, cusumVolWindow={DEFAULT_CUSUM_VOL_WINDOW}, cusumK={DEFAULT_CUSUM_K}, cusumH=
               {DEFAULT_CUSUM_H}, cusumDecayBars={DEFAULT_CUSUM_DECAY_BARS}, weights=(vol=
               {DEFAULT_SCORE_WEIGHTS.volatility}, trend={DEFAULT_SCORE_WEIGHTS.trend}, cusum=

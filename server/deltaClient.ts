@@ -125,7 +125,7 @@ async function fetchDeltaJson<T>(pathAndQuery: string): Promise<T> {
         method: 'GET',
         headers: {
           Accept: 'application/json',
-          'User-Agent': 'RegimeSentinel/1.0 (read-only-market-monitor)',
+          'User-Agent': 'DeltaTradeBot/1.0 (read-only-market-monitor)',
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });

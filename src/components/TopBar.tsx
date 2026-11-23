@@ -82,7 +82,7 @@ export function TopBar({
           }}
           className="font-display text-lg font-semibold tracking-tight text-slate-100 whitespace-nowrap shrink-0"
         >
-          Regime Sentinel
+          Delta Trade Bot
         </a>
 
         {/* Zone 2: Clean single-line text navigation links */}
