@@ -178,6 +178,23 @@ export function parseAlpacaErrorBody(
   }
 }
 
+function shouldRecordHealthError(err: unknown): boolean {
+  if (err instanceof AlpacaNotConfiguredError) {
+    return true;
+  }
+  if (err instanceof AlpacaApiError) {
+    if (err.code === 'PLAN_RESTRICTION' || err.code === 'DISALLOWED_PATH') {
+      return false;
+    }
+    if (err.code === 'ALPACA_AUTH_ERROR' || err.status === 429 || err.status >= 500) {
+      return true;
+    }
+    // Benign 4xx (e.g. 404 unknown symbol like ZZZZZZ or 400 validation) must not poison health badge
+    return false;
+  }
+  return true;
+}
+
 async function fetchAlpacaJson<T>(path: string, shapePrefix: string): Promise<T> {
   if (!ALPACA_CONFIGURED) {
     const err = new AlpacaNotConfiguredError();
@@ -240,6 +257,16 @@ async function fetchAlpacaJson<T>(path: string, shapePrefix: string): Promise<T>
           (response.status === 403 &&
             typeof message === 'string' &&
             /subscription does not permit|sip/i.test(message));
+
+        if (response.status === 401 || (response.status === 403 && !isPlanRestriction)) {
+          throw new AlpacaApiError(
+            `Alpaca credentials rejected (HTTP ${response.status})${message ? `: ${message}` : ' — verify ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY in Secrets.'}`,
+            502,
+            'ALPACA_AUTH_ERROR',
+            alpacaCode,
+          );
+        }
+
         const mappedCode = isPlanRestriction ? 'PLAN_RESTRICTION' : 'ALPACA_HTTP_ERROR';
         throw new AlpacaApiError(
           message || `Alpaca Market Data returned HTTP ${response.status}`,
@@ -260,7 +287,11 @@ async function fetchAlpacaJson<T>(path: string, shapePrefix: string): Promise<T>
       if (err instanceof AlpacaNotConfiguredError) {
         throw err;
       }
-      if (err instanceof AlpacaApiError && err.status >= 400 && err.status < 500 && err.status !== 429) {
+      if (
+        err instanceof AlpacaApiError &&
+        (err.code === 'ALPACA_AUTH_ERROR' ||
+          (err.status >= 400 && err.status < 500 && err.status !== 429))
+      ) {
         break;
       }
       if (attempt < MAX_RETRY_ATTEMPTS) {
@@ -271,7 +302,9 @@ async function fetchAlpacaJson<T>(path: string, shapePrefix: string): Promise<T>
 
   const message =
     lastCaught instanceof Error ? lastCaught.message : 'Unknown error contacting Alpaca Market Data';
-  lastError = message;
+  if (shouldRecordHealthError(lastCaught)) {
+    lastError = message;
+  }
 
   if (lastCaught instanceof AlpacaApiError) {
     throw lastCaught;

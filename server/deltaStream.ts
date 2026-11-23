@@ -9,8 +9,12 @@ import type {
 
 export const DELTA_WS_URL = 'wss://socket.india.delta.exchange';
 
+export const MAX_TOTAL_STREAM_SUBSCRIBERS = 50;
+export const MAX_PER_IP_STREAM_SUBSCRIBERS = 5;
+
 interface StreamSubscriber {
   id: string;
+  ip: string;
   symbol: string;
   resolution: CandleResolution;
   basis: CandlePriceBasis;
@@ -30,6 +34,28 @@ class DeltaStreamManager {
   private loggedWsTypes = new Set<string>();
   private activeTickerSymbols = new Set<string>();
   private activeCandleSubscriptions = new Set<string>(); // `${resolution}|${querySymbol}`
+
+  canAcceptSubscriber(ip: string): { allowed: true } | { allowed: false; reason: string } {
+    if (this.subscribers.size >= MAX_TOTAL_STREAM_SUBSCRIBERS) {
+      return {
+        allowed: false,
+        reason: `Global stream subscriber capacity reached (${MAX_TOTAL_STREAM_SUBSCRIBERS})`,
+      };
+    }
+    let ipCount = 0;
+    for (const sub of this.subscribers.values()) {
+      if (sub.ip === ip) {
+        ipCount += 1;
+      }
+    }
+    if (ipCount >= MAX_PER_IP_STREAM_SUBSCRIBERS) {
+      return {
+        allowed: false,
+        reason: `Per-IP stream subscriber limit reached (${MAX_PER_IP_STREAM_SUBSCRIBERS})`,
+      };
+    }
+    return { allowed: true };
+  }
 
   addSubscriber(sub: StreamSubscriber): () => void {
     this.subscribers.set(sub.id, sub);

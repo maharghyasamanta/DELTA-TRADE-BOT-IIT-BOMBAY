@@ -3,6 +3,7 @@ import { AlertCircle, X } from 'lucide-react';
 import {
   fetchAlpacaLatestTrade,
   fetchAlpacaStatus,
+  pingAlpaca,
   ProxyRequestError,
 } from './api/alpacaApi';
 import { fetchExplainStatus } from './api/explainApi';
@@ -143,10 +144,47 @@ export default function App() {
     }
   }, []);
 
+  const hasAutoPingedAlpacaRef = useRef(false);
+
   const loadAlpacaStatus = useCallback(async () => {
     setIsCheckingAlpaca(true);
     try {
       const status = await syncAlpacaStatusOnly();
+      if (
+        status &&
+        status.configured &&
+        status.lastSuccessAt === null &&
+        status.lastError === null &&
+        !hasAutoPingedAlpacaRef.current
+      ) {
+        hasAutoPingedAlpacaRef.current = true;
+        try {
+          const pingRes = await pingAlpaca();
+          await syncAlpacaStatusOnly();
+          setAlpacaLiveError(null);
+          setAlpacaLiveSuccessAt(pingRes.fetchedAt);
+        } catch (err) {
+          const errState: AlpacaLiveErrorState =
+            err instanceof ProxyRequestError
+              ? {
+                  status: err.status,
+                  code: err.code,
+                  message: err.message,
+                  timestamp: err.timestamp,
+                }
+              : {
+                  status: null,
+                  code: null,
+                  message: err instanceof Error ? err.message : 'Alpaca ping failed',
+                  timestamp: new Date().toISOString(),
+                };
+          await syncAlpacaStatusOnly();
+          setAlpacaLiveSuccessAt(null);
+          setAlpacaLiveError(errState);
+        }
+        return;
+      }
+
       if (status && status.lastError === null && status.lastSuccessAt !== null) {
         setAlpacaLiveError(null);
       } else if (status && status.lastError !== null) {
@@ -163,20 +201,22 @@ export default function App() {
       return;
     }
 
-    if (!activeAlpacaSymbol) {
-      setAlpacaBadgeHintNoSymbol(true);
-      return;
-    }
-
     setIsCheckingAlpaca(true);
     setAlpacaBadgeHintNoSymbol(false);
     setAlpacaLiveError(null);
 
     try {
-      const env = await fetchAlpacaLatestTrade(activeAlpacaSymbol);
-      await syncAlpacaStatusOnly();
-      setAlpacaLiveError(null);
-      setAlpacaLiveSuccessAt(env.fetchedAt || new Date().toISOString());
+      if (activeAlpacaSymbol) {
+        const env = await fetchAlpacaLatestTrade(activeAlpacaSymbol);
+        await syncAlpacaStatusOnly();
+        setAlpacaLiveError(null);
+        setAlpacaLiveSuccessAt(env.fetchedAt || new Date().toISOString());
+      } else {
+        const pingRes = await pingAlpaca();
+        await syncAlpacaStatusOnly();
+        setAlpacaLiveError(null);
+        setAlpacaLiveSuccessAt(pingRes.fetchedAt || new Date().toISOString());
+      }
     } catch (err) {
       const errState: AlpacaLiveErrorState =
         err instanceof ProxyRequestError
@@ -207,6 +247,11 @@ export default function App() {
     } catch {
       setExplainStatus({
         configured: false,
+        primaryModel: 'gemini-4-hydrogen',
+        fallbackModel: 'gemini-3.1-flash-lite',
+        primaryModelOk: null,
+        fallbackModelOk: null,
+        modelCheckError: null,
         lastSuccessAt: null,
         lastError: 'Unable to reach /api/explain/status',
         checkedAt: new Date().toISOString(),
@@ -812,6 +857,7 @@ export default function App() {
           isSignedIn={Boolean(firebaseAuth.user)}
           geminiConfigured={explainStatus ? explainStatus.configured : null}
           geminiVerified={Boolean(explainStatus?.lastSuccessAt)}
+          explainStatus={explainStatus}
           phase5Completed={phase5Status.completed}
           phase5Error={phase5Status.errorMessage}
           phase5Detail={phase5Status.summaryDetail}

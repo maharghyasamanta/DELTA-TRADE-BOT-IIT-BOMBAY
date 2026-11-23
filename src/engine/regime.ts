@@ -77,6 +77,12 @@ export interface LogReturnsResult {
   entries: ReadonlyArray<LogReturnEntry>;
   skippedCount: number;
   skippedTimes: ReadonlyArray<number>;
+  gapCount: number;
+  gapTimes: ReadonlyArray<number>;
+  gapByBar: ReadonlyArray<boolean>;
+  nonPositiveByBar: ReadonlyArray<boolean>;
+  nonPositiveCount: number;
+  medianIntervalSec: number | null;
 }
 
 export interface VolatilityZOptions {
@@ -142,6 +148,8 @@ export interface RegimeSeriesPoint {
 export interface RegimeMeta {
   candleCount: number;
   skippedNonPositiveCloses: number;
+  skippedGaps: number;
+  gapTimes: ReadonlyArray<number>;
   skippedTimes: ReadonlyArray<number>;
   requiredBarsForVolZ: number;
   requiredBarsForTrend: number;
@@ -214,25 +222,67 @@ export function resolveRegimeOptions(options?: RegimeOptions): ResolvedRegimeOpt
   };
 }
 
+function computeMedianSorted(sortedAsc: readonly number[]): number | null {
+  const n = sortedAsc.length;
+  if (n === 0) return null;
+  const mid = Math.floor(n / 2);
+  return n % 2 === 0 ? (sortedAsc[mid - 1] + sortedAsc[mid]) / 2 : sortedAsc[mid];
+}
+
+function insertSorted(sortedAsc: number[], value: number): void {
+  let lo = 0;
+  let hi = sortedAsc.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sortedAsc[mid] < value) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  sortedAsc.splice(lo, 0, value);
+}
+
 /**
  * Compute per-bar log returns: r[i] = ln(close[i] / close[i - 1]).
  *
- * Any transition involving a non-positive or non-finite close is skipped
- * (byBar[i] = null) and recorded in skippedCount / skippedTimes rather than
- * producing NaN or Infinity.
+ * Any transition involving a non-positive/non-finite close OR a bar-time gap
+ * where dt > 1.5 * causalMedianPositiveInterval (overnight/weekend/missing candle)
+ * is skipped (byBar[i] = null) and recorded in skippedCount / skippedTimes so it
+ * never feeds into CUSUM or rolling volatility. Gap threshold uses strictly
+ * preceding positive intervals (bars <= i - 1) so there is zero lookahead.
  */
 export function logReturns(candles: readonly CandlePoint[]): LogReturnsResult {
   const n = candles.length;
-  const byBar: Array<number | null> = new Array<number | null>(n).fill(null);
+  const byBar = new Array<number | null>(n).fill(null);
+  const gapByBar = new Array<boolean>(n).fill(false);
+  const nonPositiveByBar = new Array<boolean>(n).fill(false);
   const entries: LogReturnEntry[] = [];
   const skippedTimes: number[] = [];
+  const gapTimes: number[] = [];
+  const sortedPriorDiffs: number[] = [];
   let skippedCount = 0;
+  let gapCount = 0;
+  let nonPositiveCount = 0;
 
   if (n === 0) {
-    return { byBar, entries, skippedCount, skippedTimes };
+    return {
+      byBar,
+      entries,
+      skippedCount,
+      skippedTimes,
+      gapCount,
+      gapTimes,
+      gapByBar,
+      nonPositiveByBar,
+      nonPositiveCount,
+      medianIntervalSec: null,
+    };
   }
 
   if (!isValidPositive(candles[0].close)) {
+    nonPositiveByBar[0] = true;
+    nonPositiveCount += 1;
     skippedCount += 1;
     skippedTimes.push(candles[0].time);
   }
@@ -240,21 +290,48 @@ export function logReturns(candles: readonly CandlePoint[]): LogReturnsResult {
   for (let i = 1; i < n; i += 1) {
     const prevClose = candles[i - 1].close;
     const currClose = candles[i].close;
+    const dt = candles[i].time - candles[i - 1].time;
+    const priorMedianSec = computeMedianSorted(sortedPriorDiffs);
+    const isGap =
+      Number.isFinite(dt) &&
+      dt > 0 &&
+      priorMedianSec !== null &&
+      priorMedianSec > 0 &&
+      dt > 1.5 * priorMedianSec;
+
+    if (Number.isFinite(dt) && dt > 0) {
+      insertSorted(sortedPriorDiffs, dt);
+    }
 
     if (!isValidPositive(currClose)) {
+      nonPositiveByBar[i] = true;
+      nonPositiveCount += 1;
       skippedCount += 1;
       skippedTimes.push(candles[i].time);
       continue;
     }
 
     if (!isValidPositive(prevClose)) {
+      nonPositiveByBar[i] = true;
+      nonPositiveCount += 1;
       skippedCount += 1;
+      skippedTimes.push(candles[i].time);
+      continue;
+    }
+
+    if (isGap) {
+      gapByBar[i] = true;
+      gapCount += 1;
+      skippedCount += 1;
+      gapTimes.push(candles[i].time);
       skippedTimes.push(candles[i].time);
       continue;
     }
 
     const r = Math.log(currClose / prevClose);
     if (!Number.isFinite(r)) {
+      nonPositiveByBar[i] = true;
+      nonPositiveCount += 1;
       skippedCount += 1;
       skippedTimes.push(candles[i].time);
       continue;
@@ -264,29 +341,45 @@ export function logReturns(candles: readonly CandlePoint[]): LogReturnsResult {
     entries.push({ barIndex: i, time: candles[i].time, value: r });
   }
 
-  return { byBar, entries, skippedCount, skippedTimes };
+  return {
+    byBar,
+    entries,
+    skippedCount,
+    skippedTimes,
+    gapCount,
+    gapTimes,
+    gapByBar,
+    nonPositiveByBar,
+    nonPositiveCount,
+    medianIntervalSec: computeMedianSorted(sortedPriorDiffs),
+  };
 }
 
 function computeRollingVolSeries(
   logReturnByBar: ReadonlyArray<number | null>,
   volWindow: number,
+  nonPositiveByBar?: ReadonlyArray<boolean>,
 ): Array<number | null> {
   const n = logReturnByBar.length;
   const vols = new Array<number | null>(n).fill(null);
   if (volWindow < 2) return vols;
 
+  const minValidReturnsInWindow = Math.max(2, Math.ceil(volWindow / 2));
+
   for (let t = volWindow; t < n; t += 1) {
     const slice: number[] = [];
-    let missing = false;
+    let hasNonPositive = false;
     for (let j = t - volWindow + 1; j <= t; j += 1) {
-      const val = logReturnByBar[j];
-      if (val === null) {
-        missing = true;
+      if (nonPositiveByBar && nonPositiveByBar[j]) {
+        hasNonPositive = true;
         break;
       }
-      slice.push(val);
+      const val = logReturnByBar[j];
+      if (val !== null) {
+        slice.push(val);
+      }
     }
-    if (!missing && slice.length === volWindow) {
+    if (!hasNonPositive && slice.length >= minValidReturnsInWindow) {
       vols[t] = sampleStdDev(slice);
     }
   }
@@ -347,7 +440,7 @@ export function rollingZScoreOfVolatility(
   }
 
   const lr = logReturns(candles);
-  const rollingVols = computeRollingVolSeries(lr.byBar, volWindow);
+  const rollingVols = computeRollingVolSeries(lr.byBar, volWindow, lr.nonPositiveByBar);
   return computeRollingVolZAtBar(rollingVols, candles.length - 1, volLookback);
 }
 
@@ -438,7 +531,7 @@ export function cusumChangePoints(
   }
 
   const lr = logReturns(candles);
-  const rollingVols = computeRollingVolSeries(lr.byBar, volWindow);
+  const rollingVols = computeRollingVolSeries(lr.byBar, volWindow, lr.nonPositiveByBar);
   const markers: CusumChangePoint[] = [];
 
   let sPos = 0;
@@ -531,7 +624,7 @@ export function computeRegimeSeries(
 ): RegimeSeriesResult {
   const options = resolveRegimeOptions(rawOptions);
   const lr = logReturns(candles);
-  const rollingVols = computeRollingVolSeries(lr.byBar, options.volWindow);
+  const rollingVols = computeRollingVolSeries(lr.byBar, options.volWindow, lr.nonPositiveByBar);
   const markers = cusumChangePoints(candles, {
     volWindow: options.cusumVolWindow,
     k: options.cusumK,
@@ -589,7 +682,9 @@ export function computeRegimeSeries(
     },
     meta: {
       candleCount: candles.length,
-      skippedNonPositiveCloses: lr.skippedCount,
+      skippedNonPositiveCloses: lr.nonPositiveCount,
+      skippedGaps: lr.gapCount,
+      gapTimes: lr.gapTimes,
       skippedTimes: lr.skippedTimes,
       requiredBarsForVolZ: options.volWindow + options.volLookback,
       requiredBarsForTrend: options.trendWindow,

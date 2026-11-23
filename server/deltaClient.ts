@@ -14,8 +14,47 @@ export const DELTA_REST_BASE = 'https://api.india.delta.exchange';
 
 const PRODUCTS_TTL_MS = 60_000;
 const CANDLES_TTL_MS = 20_000;
+const HEALTH_TTL_MS = 10_000;
 const MAX_RETRY_ATTEMPTS = 3;
 const REQUEST_TIMEOUT_MS = 10_000;
+
+export const DELTA_RESOLUTION_SECONDS: Record<CandleResolution, number> = {
+  '1m': 60,
+  '3m': 180,
+  '5m': 300,
+  '15m': 900,
+  '30m': 1800,
+  '1h': 3600,
+  '2h': 7200,
+  '4h': 14_400,
+  '6h': 21_600,
+  '1d': 86_400,
+};
+
+export function alignDeltaCandleRange(
+  resolution: CandleResolution,
+  startSec: number,
+  endSec: number,
+): { startBucket: number; endBucket: number; stepSec: number } {
+  const stepSec = DELTA_RESOLUTION_SECONDS[resolution];
+  const endBucket = Math.floor(endSec / stepSec) * stepSec;
+  const startBucket = Math.floor(startSec / stepSec) * stepSec;
+  return { startBucket, endBucket, stepSec };
+}
+
+export function buildDeltaCandleCacheKey(params: {
+  querySymbol: string;
+  resolution: CandleResolution;
+  start: number;
+  end: number;
+}): string {
+  const { startBucket, endBucket } = alignDeltaCandleRange(
+    params.resolution,
+    params.start,
+    params.end,
+  );
+  return `${params.querySymbol}:${params.resolution}:${startBucket}:${endBucket}`;
+}
 
 const productsCache = new TtlCache<DeltaProductsPayload>(PRODUCTS_TTL_MS, 4);
 const candlesCache = new TtlCache<DeltaCandlesPayload>(CANDLES_TTL_MS, 200);
@@ -24,6 +63,21 @@ const loggedShapes = new Set<string>();
 
 let lastRestSuccessAt: string | null = null;
 let lastRestError: string | null = null;
+
+type ProductsFetchResult = {
+  payload: DeltaProductsPayload;
+  cached: boolean;
+  fetchedAt: string;
+};
+let inFlightProductsFetch: Promise<ProductsFetchResult> | null = null;
+
+type DeltaHealthResult = {
+  ok: boolean;
+  latencyMs: number | null;
+  error: string | null;
+};
+let cachedHealthResult: { value: DeltaHealthResult; expiresAt: number } | null = null;
+let inFlightHealthCheck: Promise<DeltaHealthResult> | null = null;
 
 export class DeltaApiError extends Error {
   readonly status: number;
@@ -246,10 +300,15 @@ export async function fetchLiveProducts(): Promise<{
     };
   }
 
-  const allProducts: DeltaProductSummary[] = [];
-  let afterCursor: string | null = null;
-  let totalCount = 0;
-  const maxPages = 12;
+  if (inFlightProductsFetch) {
+    return inFlightProductsFetch;
+  }
+
+  inFlightProductsFetch = (async (): Promise<ProductsFetchResult> => {
+    const allProducts: DeltaProductSummary[] = [];
+    let afterCursor: string | null = null;
+    let totalCount = 0;
+    const maxPages = 12;
 
   for (let page = 0; page < maxPages; page++) {
     const params = new URLSearchParams({
@@ -369,12 +428,17 @@ export async function fetchLiveProducts(): Promise<{
     totalCount: totalCount || allProducts.length,
   };
 
-  productsCache.set('live_products', payload);
-  return {
-    payload,
-    cached: false,
-    fetchedAt: new Date().toISOString(),
-  };
+    productsCache.set('live_products', payload);
+    return {
+      payload,
+      cached: false,
+      fetchedAt: new Date().toISOString(),
+    };
+  })().finally(() => {
+    inFlightProductsFetch = null;
+  });
+
+  return inFlightProductsFetch;
 }
 
 export async function fetchTickerSnapshot(symbol: string): Promise<{
@@ -409,7 +473,12 @@ export async function fetchCandlesHistory(params: {
   fetchedAt: string;
 }> {
   const querySymbol = params.basis === 'mark' ? `MARK:${params.symbol}` : params.symbol;
-  const cacheKey = `${querySymbol}:${params.resolution}:${params.start}:${params.end}`;
+  const cacheKey = buildDeltaCandleCacheKey({
+    querySymbol,
+    resolution: params.resolution,
+    start: params.start,
+    end: params.end,
+  });
 
   const cached = candlesCache.get(cacheKey);
   if (cached) {
@@ -485,26 +554,40 @@ export async function fetchCandlesHistory(params: {
   };
 }
 
-export async function checkDeltaRestHealth(): Promise<{
-  ok: boolean;
-  latencyMs: number | null;
-  error: string | null;
-}> {
-  const started = Date.now();
-  try {
-    await fetchDeltaJson<{ result?: unknown[] }>('/v2/products?page_size=1');
-    return {
-      ok: true,
-      latencyMs: Date.now() - started,
-      error: null,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      latencyMs: Date.now() - started,
-      error: err instanceof Error ? err.message : 'REST health check failed',
-    };
+export async function checkDeltaRestHealth(): Promise<DeltaHealthResult> {
+  if (cachedHealthResult && Date.now() < cachedHealthResult.expiresAt) {
+    return cachedHealthResult.value;
   }
+
+  if (inFlightHealthCheck) {
+    return inFlightHealthCheck;
+  }
+
+  inFlightHealthCheck = (async (): Promise<DeltaHealthResult> => {
+    const started = Date.now();
+    try {
+      await fetchDeltaJson<{ result?: unknown[] }>('/v2/products?page_size=1');
+      const result: DeltaHealthResult = {
+        ok: true,
+        latencyMs: Date.now() - started,
+        error: null,
+      };
+      cachedHealthResult = { value: result, expiresAt: Date.now() + HEALTH_TTL_MS };
+      return result;
+    } catch (err) {
+      const result: DeltaHealthResult = {
+        ok: false,
+        latencyMs: Date.now() - started,
+        error: err instanceof Error ? err.message : 'REST health check failed',
+      };
+      cachedHealthResult = { value: result, expiresAt: Date.now() + HEALTH_TTL_MS };
+      return result;
+    }
+  })().finally(() => {
+    inFlightHealthCheck = null;
+  });
+
+  return inFlightHealthCheck;
 }
 
 export function getClientTelemetry() {

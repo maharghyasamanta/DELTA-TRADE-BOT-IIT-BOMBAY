@@ -207,7 +207,16 @@ export function RegimePanel({
         </div>
       </div>
 
-      {/* Non-positive close warning if any bar was skipped */}
+      {/* Gap and non-positive close warnings if any bar transition was skipped */}
+      {meta.skippedGaps > 0 && (
+        <div className="flex items-center gap-2 border-t border-amber-500/30 bg-amber-950/20 px-5 py-2 text-xs text-amber-200">
+          <Info className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+          <span className="font-mono">
+            {meta.skippedGaps} gap(s) detected (cross-gap transitions excluded from log returns and CUSUM).
+          </span>
+        </div>
+      )}
+
       {meta.skippedNonPositiveCloses > 0 && (
         <div className="flex items-center gap-2 border-t border-amber-500/30 bg-amber-950/20 px-5 py-2 text-xs text-amber-200">
           <Info className="h-3.5 w-3.5 shrink-0 text-amber-400" />

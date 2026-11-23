@@ -13,12 +13,15 @@ export { EXPLAIN_SYSTEM_INSTRUCTION };
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? '';
 export const GEMINI_CONFIGURED = Boolean(GEMINI_API_KEY);
 
-export const GEMINI_MODEL = 'gemini-3.8-flash';
-export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
+export const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-4-hydrogen';
+export const GEMINI_FALLBACK_MODEL =
+  process.env.GEMINI_FALLBACK_MODEL?.trim() || 'gemini-3.1-flash-lite';
 export const EXPLAIN_CACHE_TTL_MS = 60_000;
-export const EXPLAIN_TIMEOUT_MS = 15_000;
-export const EXPLAIN_MAX_ATTEMPTS = 1;
-export const EXPLAIN_MAX_RETRY_DELAY_MS = 60_000;
+export const EXPLAIN_TIMEOUT_MS = 12_000;
+export const EXPLAIN_MAX_ATTEMPTS = 2; // retry only 429 and 5xx/network
+export const EXPLAIN_TOTAL_BUDGET_MS = 24_000;
+export const EXPLAIN_MAX_RETRY_DELAY_MS = 8_000;
+const MODEL_CHECK_TTL_MS = 5 * 60_000;
 const EXPLAIN_CACHE_MAX_ENTRIES = 100;
 
 interface CacheEntry {
@@ -64,10 +67,34 @@ class PrivateExplainCache {
 }
 
 const explainCache = new PrivateExplainCache();
+const inFlightExplain = new Map<
+  string,
+  Promise<{
+    explanation: ExplainStructuredOutput;
+    model: string;
+    generatedAt: string;
+    cached: boolean;
+  }>
+>();
 
 let aiClient: GoogleGenAI | null = null;
 let lastSuccessAt: string | null = null;
 let lastError: string | null = null;
+
+interface ModelVerificationState {
+  primaryModelOk: boolean | null;
+  fallbackModelOk: boolean | null;
+  modelCheckError: string | null;
+  checkedAtMs: number;
+}
+
+let modelVerification: ModelVerificationState = {
+  primaryModelOk: null,
+  fallbackModelOk: null,
+  modelCheckError: null,
+  checkedAtMs: 0,
+};
+let inFlightModelCheck: Promise<void> | null = null;
 
 function getAiClient(): GoogleGenAI {
   if (!GEMINI_CONFIGURED) {
@@ -171,7 +198,11 @@ function parseStructuredExplanation(rawText: string): ExplainStructuredOutput {
     );
   }
 
-  if (!Array.isArray(record.keyPoints) || !Array.isArray(record.cautions) || !Array.isArray(record.unavailable)) {
+  if (
+    !Array.isArray(record.keyPoints) ||
+    !Array.isArray(record.cautions) ||
+    !Array.isArray(record.unavailable)
+  ) {
     throw new GeminiApiError(
       'Gemini structured output missing required arrays',
       502,
@@ -224,27 +255,43 @@ function parseStructuredExplanation(rawText: string): ExplainStructuredOutput {
   };
 }
 
-function extractErrorDetails(err: unknown): {
+export interface GeminiExtractedError {
   status: number;
   message: string;
   retryAfterMs: number | null;
   retryable: boolean;
+  isAuthError: boolean;
   code: string;
-} {
-  if (err instanceof GeminiApiError || err instanceof GeminiNotConfiguredError) {
+}
+
+export function extractGeminiErrorDetails(err: unknown): GeminiExtractedError {
+  if (err instanceof GeminiNotConfiguredError) {
     return {
       status: err.status,
       message: err.message,
       retryAfterMs: null,
       retryable: false,
+      isAuthError: false,
+      code: err.code,
+    };
+  }
+  if (err instanceof GeminiApiError) {
+    return {
+      status: err.status,
+      message: err.message,
+      retryAfterMs: null,
+      retryable: false,
+      isAuthError: err.code === 'GEMINI_AUTH_ERROR',
       code: err.code,
     };
   }
 
   const obj = typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : null;
-  const rawStatus = obj && typeof obj.status === 'number' && Number.isFinite(obj.status)
-    ? obj.status
-    : undefined;
+  const rawStatus =
+    obj && typeof obj.status === 'number' && Number.isFinite(obj.status)
+      ? obj.status
+      : undefined;
+
   let rawMessage = err instanceof Error ? err.message : 'Unknown error calling Gemini API';
   if (rawMessage.trim().startsWith('{')) {
     try {
@@ -258,14 +305,16 @@ function extractErrorDetails(err: unknown): {
         rawMessage = parsed.message.trim();
       }
     } catch {
-      // Keep rawMessage as-is if not valid JSON
+      // Keep rawMessage as-is
     }
   }
 
-  // Extract retry delay from response headers if attached, or error message retry info
   let retryAfterMs: number | null = null;
   if (obj && typeof obj.headers === 'object' && obj.headers !== null) {
-    const headersObj = obj.headers as { get?: (name: string) => string | null; ['retry-after']?: unknown };
+    const headersObj = obj.headers as {
+      get?: (name: string) => string | null;
+      ['retry-after']?: unknown;
+    };
     const retryHeader =
       typeof headersObj.get === 'function'
         ? headersObj.get('retry-after')
@@ -288,7 +337,19 @@ function extractErrorDetails(err: unknown): {
       message: `Gemini API request timed out after ${EXPLAIN_TIMEOUT_MS / 1000}s`,
       retryAfterMs: null,
       retryable: true,
+      isAuthError: false,
       code: 'GEMINI_TIMEOUT',
+    };
+  }
+
+  if (rawStatus === 401 || rawStatus === 403) {
+    return {
+      status: 502,
+      message: `Gemini API key rejected (HTTP ${rawStatus}) — check GEMINI_API_KEY configuration: ${rawMessage}`,
+      retryAfterMs: null,
+      retryable: false,
+      isAuthError: true,
+      code: 'GEMINI_AUTH_ERROR',
     };
   }
 
@@ -298,17 +359,21 @@ function extractErrorDetails(err: unknown): {
       message: rawMessage || 'Gemini API rate limit / quota reached (HTTP 429)',
       retryAfterMs: retryAfterMs ?? 2_000,
       retryable: true,
+      isAuthError: false,
       code: 'GEMINI_RATE_LIMITED',
     };
   }
 
   if (rawStatus !== undefined) {
+    const isModelNotFound =
+      rawStatus === 404 || (rawStatus === 400 && /not found|unsupported|model/i.test(rawMessage));
     return {
-      status: rawStatus,
+      status: rawStatus >= 500 ? rawStatus : 502,
       message: rawMessage || `Gemini API returned HTTP ${rawStatus}`,
       retryAfterMs: null,
       retryable: rawStatus >= 500,
-      code: rawStatus >= 500 ? 'GEMINI_UPSTREAM_5XX' : 'GEMINI_HTTP_ERROR',
+      isAuthError: false,
+      code: isModelNotFound ? 'GEMINI_MODEL_NOT_FOUND' : rawStatus >= 500 ? 'GEMINI_UPSTREAM_5XX' : 'GEMINI_HTTP_ERROR',
     };
   }
 
@@ -317,8 +382,210 @@ function extractErrorDetails(err: unknown): {
     message: rawMessage,
     retryAfterMs: null,
     retryable: true,
+    isAuthError: false,
     code: 'GEMINI_NETWORK_ERROR',
   };
+}
+
+function isRetryableGuardOrFormatError(err: unknown): err is GeminiApiError {
+  return (
+    err instanceof GeminiApiError &&
+    (err.code === 'UNGROUNDED_OUTPUT' ||
+      err.code === 'DISALLOWED_CONTENT' ||
+      err.code === 'GEMINI_INVALID_JSON' ||
+      err.code === 'GEMINI_INVALID_SCHEMA' ||
+      err.code === 'GEMINI_EMPTY_RESPONSE')
+  );
+}
+
+export function buildCorrectiveInstruction(err: GeminiApiError): string {
+  if (err.code === 'DISALLOWED_CONTENT' && err.matchedWords && err.matchedWords.length > 0) {
+    return `CORRECTION REQUIRED: Your previous output violated safety rules because it contained disallowed word(s): ${err.matchedWords.join(', ')}. Remove those words completely (for example use "trailing" instead of "short", "so that" instead of "in order to") and output valid JSON again.`;
+  }
+  if (err.code === 'UNGROUNDED_OUTPUT' && err.offendingNumbers && err.offendingNumbers.length > 0) {
+    return `CORRECTION REQUIRED: Your previous output contained ungrounded numbers not present in the input JSON: ${err.offendingNumbers.join(', ')}. Remove all computed/extrapolated numbers and use ONLY exact or rounded numbers present in the input JSON.`;
+  }
+  return 'CORRECTION REQUIRED: Return strictly valid JSON matching the exact schema with summary, keyPoints, cautions, and unavailable, using ONLY numbers from the input JSON.';
+}
+
+async function runModelVerification(): Promise<void> {
+  if (!GEMINI_CONFIGURED) {
+    modelVerification = {
+      primaryModelOk: null,
+      fallbackModelOk: null,
+      modelCheckError: null,
+      checkedAtMs: Date.now(),
+    };
+    return;
+  }
+
+  const ai = getAiClient();
+  const availableNames = new Set<string>();
+
+  try {
+    const pager = await ai.models.list({ config: { pageSize: 100 } });
+    for await (const modelInfo of pager) {
+      if (typeof modelInfo.name === 'string') {
+        const stripped = modelInfo.name.replace(/^models\//, '');
+        availableNames.add(stripped);
+      }
+    }
+
+    let primaryOk = availableNames.has(GEMINI_MODEL);
+    let fallbackOk = availableNames.has(GEMINI_FALLBACK_MODEL);
+
+    // Fallback to direct get() if list did not include them (e.g. truncated or gated alias)
+    if (!primaryOk) {
+      try {
+        await ai.models.get({ model: GEMINI_MODEL });
+        primaryOk = true;
+      } catch {
+        primaryOk = false;
+      }
+    }
+    if (!fallbackOk) {
+      try {
+        await ai.models.get({ model: GEMINI_FALLBACK_MODEL });
+        fallbackOk = true;
+      } catch {
+        fallbackOk = false;
+      }
+    }
+
+    const errors: string[] = [];
+    if (!primaryOk) {
+      errors.push(`Primary model "${GEMINI_MODEL}" not found`);
+    }
+    if (!fallbackOk) {
+      errors.push(`Fallback model "${GEMINI_FALLBACK_MODEL}" not found`);
+    }
+
+    modelVerification = {
+      primaryModelOk: primaryOk,
+      fallbackModelOk: fallbackOk,
+      modelCheckError: errors.length > 0 ? errors.join('; ') : null,
+      checkedAtMs: Date.now(),
+    };
+  } catch (err) {
+    const details = extractGeminiErrorDetails(err);
+    modelVerification = {
+      primaryModelOk: false,
+      fallbackModelOk: false,
+      modelCheckError: details.message,
+      checkedAtMs: Date.now(),
+    };
+  }
+}
+
+export async function verifyGeminiModelsIfNeeded(force = false): Promise<void> {
+  if (!GEMINI_CONFIGURED) return;
+  const isFresh =
+    !force &&
+    modelVerification.checkedAtMs > 0 &&
+    Date.now() - modelVerification.checkedAtMs < MODEL_CHECK_TTL_MS;
+  if (isFresh) return;
+
+  if (!inFlightModelCheck) {
+    inFlightModelCheck = runModelVerification().finally(() => {
+      inFlightModelCheck = null;
+    });
+  }
+  await inFlightModelCheck;
+}
+
+// Kick off non-blocking startup model check when configured
+if (GEMINI_CONFIGURED) {
+  void verifyGeminiModelsIfNeeded(true);
+}
+
+async function generateStructuredOnce(
+  ai: GoogleGenAI,
+  activeModel: string,
+  snapshot: ExplainSnapshotRequest,
+  correctionPrompt?: string,
+  timeoutMs = EXPLAIN_TIMEOUT_MS,
+): Promise<ExplainStructuredOutput> {
+  const supportsThinkingLevel =
+    activeModel.startsWith('gemini-3') || activeModel.startsWith('gemini-4');
+
+  const userContents = correctionPrompt
+    ? `${JSON.stringify(snapshot)}\n\n${correctionPrompt}`
+    : JSON.stringify(snapshot);
+
+  const response = await ai.models.generateContent({
+    model: activeModel,
+    contents: userContents,
+    config: {
+      systemInstruction: EXPLAIN_SYSTEM_INSTRUCTION,
+      responseMimeType: 'application/json',
+      ...(supportsThinkingLevel ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
+      abortSignal: AbortSignal.timeout(timeoutMs),
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          summary: {
+            type: Type.STRING,
+            description:
+              'Concise plain-language summary (max 400 characters) using ONLY numbers present in the input JSON.',
+          },
+          keyPoints: {
+            type: Type.ARRAY,
+            description: 'Up to 6 structured metric explanations grounded in the input JSON.',
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING, description: 'Metric or rule name.' },
+                valueText: {
+                  type: Type.STRING,
+                  description: 'Observed input value formatted cleanly (or "unavailable").',
+                },
+                meaning: {
+                  type: Type.STRING,
+                  description: 'What this observed value describes without recommending actions.',
+                },
+              },
+              required: ['label', 'valueText', 'meaning'],
+            },
+          },
+          cautions: {
+            type: Type.ARRAY,
+            description: 'Up to 3 descriptive data or threshold cautions (max 3 items).',
+            items: { type: Type.STRING },
+          },
+          unavailable: {
+            type: Type.ARRAY,
+            description:
+              'List any null/missing metrics explicitly noted as unavailable; empty array if all metrics exist.',
+            items: { type: Type.STRING },
+          },
+        },
+        required: ['summary', 'keyPoints', 'cautions', 'unavailable'],
+      },
+    },
+  });
+
+  const rawText = (response.text ?? '').trim();
+  if (!rawText) {
+    throw new GeminiApiError(
+      'Gemini returned an empty structured explanation response',
+      502,
+      'GEMINI_EMPTY_RESPONSE',
+    );
+  }
+
+  const explanation = parseStructuredExplanation(rawText);
+  const guard = validateExplainOutput(explanation, snapshot);
+  if (!guard.ok) {
+    throw new GeminiApiError(
+      guard.message,
+      502,
+      guard.code,
+      guard.offendingNumbers,
+      guard.matchedWords,
+    );
+  }
+
+  return explanation;
 }
 
 export async function explainSnapshot(snapshot: ExplainSnapshotRequest): Promise<{
@@ -344,178 +611,176 @@ export async function explainSnapshot(snapshot: ExplainSnapshotRequest): Promise
     };
   }
 
-  const ai = getAiClient();
-  let lastCaught: ReturnType<typeof extractErrorDetails> | null = null;
-  const attemptSummaries: Array<{ model: string; status: number; code: string; message: string }> = [];
-  const modelsToTry = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL] as const;
+  const existingFlight = inFlightExplain.get(cacheKey);
+  if (existingFlight) {
+    return existingFlight;
+  }
 
-  for (const activeModel of modelsToTry) {
-    const supportsThinkingLevel =
-      activeModel.startsWith('gemini-3') || activeModel.startsWith('gemini-4');
+  const runPromise = (async () => {
+    const ai = getAiClient();
+    const overallStartedAt = Date.now();
+    const modelsToTry =
+      GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL
+        ? [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]
+        : [GEMINI_MODEL];
 
-    for (let attempt = 1; attempt <= EXPLAIN_MAX_ATTEMPTS; attempt += 1) {
-      const startedAt = Date.now();
-      try {
-        const response = await ai.models.generateContent({
-          model: activeModel,
-          contents: JSON.stringify(snapshot),
-          config: {
-            systemInstruction: EXPLAIN_SYSTEM_INSTRUCTION,
-            responseMimeType: 'application/json',
-            ...(supportsThinkingLevel ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
-            abortSignal: AbortSignal.timeout(EXPLAIN_TIMEOUT_MS),
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                summary: {
-                  type: Type.STRING,
-                  description:
-                    'Concise plain-language summary (max 400 characters) using ONLY numbers present in the input JSON.',
-                },
-                keyPoints: {
-                  type: Type.ARRAY,
-                  description: 'Up to 6 structured metric explanations grounded in the input JSON.',
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      label: { type: Type.STRING, description: 'Metric or rule name.' },
-                      valueText: {
-                        type: Type.STRING,
-                        description: 'Observed input value formatted cleanly (or "unavailable").',
-                      },
-                      meaning: {
-                        type: Type.STRING,
-                        description: 'What this observed value describes without recommending actions.',
-                      },
-                    },
-                    required: ['label', 'valueText', 'meaning'],
-                  },
-                },
-                cautions: {
-                  type: Type.ARRAY,
-                  description: 'Up to 3 descriptive data or threshold cautions (max 3 items).',
-                  items: { type: Type.STRING },
-                },
-                unavailable: {
-                  type: Type.ARRAY,
-                  description:
-                    'List any null/missing metrics explicitly noted as unavailable; empty array if all metrics exist.',
-                  items: { type: Type.STRING },
-                },
-              },
-              required: ['summary', 'keyPoints', 'cautions', 'unavailable'],
-            },
-          },
-        });
+    let lastCaughtDetails: GeminiExtractedError | null = null;
+    let lastGuardError: GeminiApiError | null = null;
+    const attemptSummaries: Array<{ model: string; status: number; code: string; message: string }> =
+      [];
 
-        const rawText = (response.text ?? '').trim();
-        if (!rawText) {
-          throw new GeminiApiError(
-            'Gemini returned an empty structured explanation response',
-            502,
-            'GEMINI_EMPTY_RESPONSE',
+    for (const activeModel of modelsToTry) {
+      let correctionPrompt: string | undefined;
+      let usedCorrectiveRetry = false;
+
+      for (let attempt = 1; attempt <= EXPLAIN_MAX_ATTEMPTS; attempt += 1) {
+        const remainingBudgetMs = EXPLAIN_TOTAL_BUDGET_MS - (Date.now() - overallStartedAt);
+        if (remainingBudgetMs < 1_500) {
+          break;
+        }
+        const callTimeoutMs = Math.min(EXPLAIN_TIMEOUT_MS, remainingBudgetMs);
+        const attemptStart = Date.now();
+
+        try {
+          const explanation = await generateStructuredOnce(
+            ai,
+            activeModel,
+            snapshot,
+            correctionPrompt,
+            callTimeoutMs,
           );
-        }
 
-        const explanation = parseStructuredExplanation(rawText);
+          const generatedAt = new Date().toISOString();
+          explainCache.set(cacheKey, {
+            explanation,
+            model: activeModel,
+            generatedAt,
+          });
 
-        // Server-side deterministic guard check BEFORE caching or returning
-        const guard = validateExplainOutput(explanation, snapshot);
-        if (!guard.ok) {
-          const guardErr = new GeminiApiError(
-            guard.message,
-            502,
-            guard.code,
-            guard.offendingNumbers,
-            guard.matchedWords,
+          lastSuccessAt = generatedAt;
+          lastError = null;
+
+          return {
+            explanation,
+            model: activeModel,
+            generatedAt,
+            cached: false,
+          };
+        } catch (err) {
+          if (err instanceof GeminiNotConfiguredError) {
+            throw err;
+          }
+
+          if (isRetryableGuardOrFormatError(err)) {
+            lastGuardError = err;
+            lastCaughtDetails = extractGeminiErrorDetails(err);
+            attemptSummaries.push({
+              model: activeModel,
+              status: err.status,
+              code: err.code,
+              message: err.message,
+            });
+            console.warn(
+              `[GeminiClient] model=${activeModel} guard/format failure code=${err.code} message=${err.message}`,
+            );
+
+            // Allow one corrective retry on the same model before falling through to fallback model
+            if (!usedCorrectiveRetry && Date.now() - overallStartedAt < EXPLAIN_TOTAL_BUDGET_MS - 2_000) {
+              usedCorrectiveRetry = true;
+              correctionPrompt = buildCorrectiveInstruction(err);
+              attempt = Math.max(attempt - 1, 0); // Do not burn the transient retry budget on a 1x guard correction
+              continue;
+            }
+            break; // Proceed to fallback model
+          }
+
+          const details = extractGeminiErrorDetails(err);
+          lastCaughtDetails = details;
+          lastGuardError = null;
+          const elapsedMs = Date.now() - attemptStart;
+          attemptSummaries.push({
+            model: activeModel,
+            status: details.status,
+            code: details.code,
+            message: details.message,
+          });
+          console.warn(
+            `[GeminiClient] model=${activeModel} attempt=${attempt} elapsedMs=${elapsedMs} status=${details.status} code=${details.code} message=${details.message}`,
           );
-          lastError = guardErr.message;
-          throw guardErr;
-        }
 
-        const generatedAt = new Date().toISOString();
-        explainCache.set(cacheKey, {
-          explanation,
-          model: activeModel,
-          generatedAt,
-        });
+          // Invalid key / auth rejection should fail immediately without trying fallback
+          if (details.isAuthError) {
+            lastError = details.message;
+            throw new GeminiApiError(details.message, 502, details.code);
+          }
 
-        lastSuccessAt = generatedAt;
-        lastError = null;
+          // Non-retryable upstream errors (404 model not found, 400, etc.) break inner loop and try fallback model
+          if (!details.retryable) {
+            break;
+          }
 
-        return {
-          explanation,
-          model: activeModel,
-          generatedAt,
-          cached: false,
-        };
-      } catch (err) {
-        if (err instanceof GeminiNotConfiguredError) {
-          throw err;
-        }
-        if (
-          err instanceof GeminiApiError &&
-          (err.code === 'UNGROUNDED_OUTPUT' ||
-            err.code === 'DISALLOWED_CONTENT' ||
-            err.code === 'GEMINI_INVALID_JSON' ||
-            err.code === 'GEMINI_INVALID_SCHEMA')
-        ) {
-          throw err;
-        }
-
-        const details = extractErrorDetails(err);
-        lastCaught = details;
-        const elapsedMs = Date.now() - startedAt;
-        attemptSummaries.push({
-          model: activeModel,
-          status: details.status,
-          code: details.code,
-          message: details.message,
-        });
-        console.warn(
-          `[GeminiClient] model=${activeModel} attempt=${attempt} elapsedMs=${elapsedMs} status=${details.status} code=${details.code} message=${details.message}`,
-        );
-
-        if (!details.retryable) {
-          lastError = details.message;
-          throw new GeminiApiError(details.message, details.status, details.code);
-        }
-
-        if (attempt < EXPLAIN_MAX_ATTEMPTS) {
-          const waitMs = Math.min(
-            details.retryAfterMs ?? 600 * Math.pow(2, attempt - 1),
-            EXPLAIN_MAX_RETRY_DELAY_MS,
-          );
-          await sleep(waitMs);
+          if (attempt < EXPLAIN_MAX_ATTEMPTS) {
+            const baseWait = details.retryAfterMs ?? 700 * Math.pow(2, attempt - 1);
+            const jitter = Math.floor(Math.random() * 250);
+            const waitMs = Math.min(baseWait + jitter, EXPLAIN_MAX_RETRY_DELAY_MS);
+            const remainingAfterWait = EXPLAIN_TOTAL_BUDGET_MS - (Date.now() - overallStartedAt) - waitMs;
+            if (remainingAfterWait < 2_000) {
+              break;
+            }
+            await sleep(waitMs);
+          }
         }
       }
     }
-  }
 
-  let finalMessage = lastCaught?.message ?? 'Unknown error calling Gemini API';
-  if (attemptSummaries.length > 1) {
-    const modelSummary = attemptSummaries
-      .map((item) => `${item.model} (HTTP ${item.status})`)
-      .join(', ');
-    finalMessage = `Tried ${modelSummary}: ${lastCaught?.message ?? 'upstream request failed'}`;
-  } else if (attemptSummaries.length === 1) {
-    finalMessage = `${attemptSummaries[0].model} (HTTP ${attemptSummaries[0].status}): ${attemptSummaries[0].message}`;
-  }
-  lastError = finalMessage;
-  throw new GeminiApiError(
-    finalMessage,
-    lastCaught?.status ?? 502,
-    lastCaught?.code ?? 'GEMINI_UPSTREAM_ERROR',
-  );
+    if (lastGuardError && lastCaughtDetails?.code === lastGuardError.code) {
+      lastError = lastGuardError.message;
+      throw lastGuardError;
+    }
+
+    let finalMessage = lastCaughtDetails?.message ?? 'Unknown error calling Gemini API';
+    if (attemptSummaries.length > 1) {
+      const modelSummary = attemptSummaries
+        .map((item) => `${item.model} (${item.code})`)
+        .join(', ');
+      finalMessage = `Tried ${modelSummary}: ${lastCaughtDetails?.message ?? 'upstream request failed'}`;
+    } else if (attemptSummaries.length === 1) {
+      finalMessage = `${attemptSummaries[0].model} (HTTP ${attemptSummaries[0].status}): ${attemptSummaries[0].message}`;
+    }
+
+    lastError = finalMessage;
+    throw new GeminiApiError(
+      finalMessage,
+      lastCaughtDetails?.status ?? 502,
+      lastCaughtDetails?.code ?? 'GEMINI_UPSTREAM_ERROR',
+      lastGuardError?.offendingNumbers,
+      lastGuardError?.matchedWords,
+    );
+  })().finally(() => {
+    inFlightExplain.delete(cacheKey);
+  });
+
+  inFlightExplain.set(cacheKey, runPromise);
+  return runPromise;
 }
 
 export function getExplainTelemetry(): {
   configured: boolean;
+  primaryModel: string;
+  fallbackModel: string;
+  primaryModelOk: boolean | null;
+  fallbackModelOk: boolean | null;
+  modelCheckError: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
 } {
   return {
     configured: GEMINI_CONFIGURED,
+    primaryModel: GEMINI_MODEL,
+    fallbackModel: GEMINI_FALLBACK_MODEL,
+    primaryModelOk: modelVerification.primaryModelOk,
+    fallbackModelOk: modelVerification.fallbackModelOk,
+    modelCheckError: modelVerification.modelCheckError,
     lastSuccessAt,
     lastError,
   };

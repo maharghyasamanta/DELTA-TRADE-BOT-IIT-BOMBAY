@@ -1,11 +1,6 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, type Auth } from 'firebase/auth';
-import {
-  doc,
-  getDocFromServer,
-  getFirestore,
-  type Firestore,
-} from 'firebase/firestore';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
 export enum OperationType {
   CREATE = 'create',
@@ -18,6 +13,7 @@ export enum OperationType {
 
 export interface FirestoreErrorInfo {
   error: string;
+  code: string | null;
   operationType: OperationType;
   path: string | null;
   authInfo: {
@@ -109,19 +105,12 @@ export const firebaseConfigError = isFirebaseConfigured
 
 export { auth, db, googleProvider };
 
-async function testConnection(firestore: Firestore): Promise<void> {
-  try {
-    await getDocFromServer(doc(firestore, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-    }
-  }
-}
+import {
+  extractFirestoreErrorCode,
+  formatFirestoreErrorForUi,
+} from './services/decisionPayload';
 
-if (db) {
-  void testConnection(db);
-}
+export { extractFirestoreErrorCode, formatFirestoreErrorForUi };
 
 export function handleFirestoreError(
   error: unknown,
@@ -131,6 +120,7 @@ export function handleFirestoreError(
   const currentUser = auth?.currentUser ?? null;
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
+    code: extractFirestoreErrorCode(error),
     authInfo: {
       userId: currentUser?.uid ?? null,
       email: currentUser?.email ?? null,

@@ -161,3 +161,61 @@ test('computeRegimeSeries integrates series, markers, and insufficient-data meta
   assert.equal(res.latest.trend, 1);
   assert.equal(res.latest.score, null);
 });
+
+test('logReturns & cusumChangePoints skip a 10x price jump across a 12-hour overnight gap and stay causal', () => {
+  const candles: CandlePoint[] = [];
+  const start = 1_700_000_000;
+  let t = start;
+  const preGapCloses = [100, 100.5, 99.8, 100.4, 99.9, 100.3, 99.7, 100.2];
+  for (let i = 0; i < preGapCloses.length; i += 1) {
+    if (i > 0) t += 900;
+    candles.push({
+      time: t,
+      open: preGapCloses[i],
+      high: preGapCloses[i],
+      low: preGapCloses[i],
+      close: preGapCloses[i],
+      volume: 100,
+    });
+  }
+
+  // 12-hour overnight gap with a 10x jump (100.2 -> 1002.0), followed by quiet bars
+  const gapBarIndex = candles.length;
+  t += 12 * 3600;
+  const gapTime = t;
+  const postGapCloses = [1002.0, 1003.0, 1001.5, 1002.5, 1002.0];
+  for (let i = 0; i < postGapCloses.length; i += 1) {
+    if (i > 0) t += 900;
+    candles.push({
+      time: t,
+      open: postGapCloses[i],
+      high: postGapCloses[i],
+      low: postGapCloses[i],
+      close: postGapCloses[i],
+      volume: 100,
+    });
+  }
+
+  const lr = logReturns(candles);
+  assert.equal(lr.gapCount, 1);
+  assert.deepEqual(lr.gapTimes, [gapTime]);
+  assert.equal(lr.byBar[gapBarIndex], null);
+  assert.equal(lr.gapByBar[gapBarIndex], true);
+
+  const markers = cusumChangePoints(candles, { volWindow: 4, k: 0.5, h: 5 });
+  assert.deepEqual(markers, []);
+
+  const regime = computeRegimeSeries(candles, { volWindow: 4, volLookback: 4, cusumVolWindow: 4 });
+  assert.equal(regime.meta.skippedGaps, 1);
+  assert.equal(regime.meta.skippedNonPositiveCloses, 0);
+
+  // Verify strict causality on gap-bearing series: prefix[0..i] equals full[i]
+  for (const idx of [gapBarIndex - 1, gapBarIndex, candles.length - 1]) {
+    const truncated = computeRegimeSeries(candles.slice(0, idx + 1), {
+      volWindow: 4,
+      volLookback: 4,
+      cusumVolWindow: 4,
+    });
+    assert.deepEqual(truncated.series[idx], regime.series[idx]);
+  }
+});

@@ -6,6 +6,7 @@ import {
   GeminiNotConfiguredError,
   explainSnapshot,
   getExplainTelemetry,
+  verifyGeminiModelsIfNeeded,
 } from '../geminiClient.ts';
 import type {
   ExplainApiEnvelope,
@@ -318,10 +319,16 @@ function checkRateLimit(clientKey: string): { allowed: true } | { allowed: false
 export function createExplainRouter(): Router {
   const router = Router();
 
-  router.get('/explain/status', (_req: Request, res: Response) => {
+  router.get('/explain/status', async (_req: Request, res: Response) => {
+    await verifyGeminiModelsIfNeeded();
     const telemetry = getExplainTelemetry();
     const payload: ExplainStatusResponse = {
       configured: telemetry.configured,
+      primaryModel: telemetry.primaryModel,
+      fallbackModel: telemetry.fallbackModel,
+      primaryModelOk: telemetry.primaryModelOk,
+      fallbackModelOk: telemetry.fallbackModelOk,
+      modelCheckError: telemetry.modelCheckError,
       lastSuccessAt: telemetry.lastSuccessAt,
       lastError: telemetry.lastError,
       checkedAt: new Date().toISOString(),

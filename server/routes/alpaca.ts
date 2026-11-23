@@ -22,6 +22,14 @@ import {
 import { normalizeAlpacaBars } from '../../src/utils/normalizeAlpacaBars.ts';
 
 const SYMBOL_REGEX = /^[A-Z]{1,10}$/;
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))?$/;
+const MAX_ALPACA_SPAN_MS: Record<AlpacaTimeframe, number> = {
+  '1Min': 35 * 86_400_000, // <= 50,400 calendar mins
+  '5Min': 175 * 86_400_000,
+  '15Min': 520 * 86_400_000,
+  '1Hour': 2083 * 86_400_000,
+  '1Day': 10 * 365 * 86_400_000, // 10 years
+};
 
 function sendError(
   res: Response,
@@ -73,6 +81,26 @@ export function createAlpacaRouter(): Router {
       checkedAt: new Date().toISOString(),
     };
     res.status(200).json(payload);
+  });
+
+  router.get('/alpaca/ping', async (_req: Request, res: Response) => {
+    if (!ALPACA_CONFIGURED) {
+      const err = new AlpacaNotConfiguredError();
+      sendError(res, 503, 'ALPACA_NOT_CONFIGURED', err.message);
+      return;
+    }
+
+    try {
+      const { cached, fetchedAt } = await fetchAlpacaLatestTradeWithMeta('SPY');
+      res.status(200).json({
+        ok: true,
+        symbol: 'SPY',
+        fetchedAt,
+        cached,
+      });
+    } catch (err) {
+      handleAlpacaRouteError(res, err, 'ALPACA_PING_FAILED');
+    }
   });
 
   router.get('/alpaca/validate/:symbol', async (req: Request, res: Response) => {
@@ -139,12 +167,40 @@ export function createAlpacaRouter(): Router {
       );
       return;
     }
-    if (!start || !end) {
-      sendError(res, 400, 'INVALID_TIME_RANGE', 'start and end query parameters are required');
+    if (!start || !end || !ISO_DATE_REGEX.test(start) || !ISO_DATE_REGEX.test(end)) {
+      sendError(
+        res,
+        400,
+        'INVALID_TIME_RANGE',
+        'start and end query parameters must be valid ISO 8601 timestamps',
+      );
       return;
     }
 
-    let feed: AlpacaFeed | undefined;
+    const startMs = Date.parse(start);
+    const endMs = Date.parse(end);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) {
+      sendError(
+        res,
+        400,
+        'INVALID_TIME_RANGE',
+        'start timestamp must be valid and strictly earlier than end timestamp',
+      );
+      return;
+    }
+
+    const maxSpanMs = MAX_ALPACA_SPAN_MS[timeframeRaw];
+    if (endMs - startMs > maxSpanMs) {
+      sendError(
+        res,
+        400,
+        'RANGE_TOO_LARGE',
+        `Requested window exceeds maximum span for ${timeframeRaw} bars`,
+      );
+      return;
+    }
+
+    let feed: AlpacaFeed = 'iex';
     if (feedRaw) {
       if (feedRaw !== 'iex' && feedRaw !== 'sip') {
         sendError(res, 400, 'INVALID_FEED', 'feed must be either "iex" or "sip"');
@@ -166,7 +222,7 @@ export function createAlpacaRouter(): Router {
         bars,
         symbol,
         timeframe: timeframeRaw,
-        feed: feed ?? null,
+        feed,
         fetchedAt,
       };
       const envelope: AlpacaApiEnvelope<AlpacaBarsResponse> = {

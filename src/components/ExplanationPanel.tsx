@@ -186,6 +186,19 @@ export function ExplanationPanel({
           </div>
         )}
 
+        {isConfigured === true && explainStatus?.modelCheckError && (
+          <div
+            role="status"
+            className="flex items-start gap-2.5 rounded-md border border-amber-500/35 bg-amber-950/20 px-4 py-3 text-xs text-amber-200"
+          >
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />
+            <span className="font-mono">
+              Model check warning ({explainStatus.primaryModel} / {explainStatus.fallbackModel}):{' '}
+              {explainStatus.modelCheckError}
+            </span>
+          </div>
+        )}
+
         {isLoading && (
           <div aria-label="Loading structured explanation" className="space-y-3">
             <div className="h-4 w-5/6 animate-pulse rounded bg-slate-800" />

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { evaluateGuardrails, type GuardrailDecision } from '../engine/guardrails';
 import type { RegimeSeriesResult } from '../engine/regime';
+import { formatFirestoreErrorForUi } from '../firebase';
 import {
   logGuardrailDecision,
   type DecisionSource,
@@ -126,9 +127,10 @@ export function GuardrailPanel({
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
+      const formatted = formatFirestoreErrorForUi(err);
       setLogStatus({
         kind: 'error',
-        message: err instanceof Error ? err.message : 'Failed to log decision',
+        message: formatted.code ? `[${formatted.code}] ${formatted.message}` : formatted.message,
         timestamp: new Date().toISOString(),
       });
     } finally {

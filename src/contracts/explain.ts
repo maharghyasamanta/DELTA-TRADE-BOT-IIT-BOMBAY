@@ -92,7 +92,13 @@ export interface ExplainApiErrorResponse {
 
 export interface ExplainStatusResponse {
   configured: boolean;
+  primaryModel: string;
+  fallbackModel: string;
+  primaryModelOk: boolean | null;
+  fallbackModelOk: boolean | null;
+  modelCheckError: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
   checkedAt: string;
 }
+

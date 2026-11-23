@@ -9,6 +9,11 @@ import {
   validateExplainOutput,
   validateNumberGrounding,
 } from '../src/engine/explainGuard.ts';
+import {
+  buildCorrectiveInstruction,
+  extractGeminiErrorDetails,
+  GeminiApiError,
+} from '../server/geminiClient.ts';
 
 function createBaseSnapshot(
   overrides?: Partial<ExplainSnapshotRequest>,
@@ -213,4 +218,44 @@ describe('explainGuard', () => {
     const result = validateExplainOutput(output, snapshot);
     assert.deepEqual(result, { ok: true });
   });
+
+  it('documents cross-metric grounding limitation: a number matching another snapshot value passes grounding', () => {
+    // Here trend = 0.25 and thresholdsUsed.reduceVolZ = 1.5.
+    // Referring to "Regime Score of 1.5" is semantically swapped across fields, yet 1.5 exists
+    // in extractAllowedNumbers(snapshot) so bag-of-numbers grounding accepts it.
+    const snapshot = createBaseSnapshot();
+    const swappedOutput: ExplainStructuredOutput = {
+      summary: 'BTCUSD regime score is 1.5 on 96 loaded candles.',
+      keyPoints: [],
+      cautions: [],
+      unavailable: [],
+    };
+    const grounding = validateNumberGrounding(swappedOutput, snapshot);
+    assert.equal(grounding.ok, true);
+  });
+
+  it('maps Gemini 401/403 to HTTP 502 GEMINI_AUTH_ERROR (no fallback) and allows 404 to fall through', () => {
+    const auth401 = extractGeminiErrorDetails({ status: 401, message: 'API key not valid' });
+    assert.equal(auth401.status, 502);
+    assert.equal(auth401.code, 'GEMINI_AUTH_ERROR');
+    assert.equal(auth401.isAuthError, true);
+    assert.equal(auth401.retryable, false);
+
+    const notFound404 = extractGeminiErrorDetails({ status: 404, message: 'models/foo not found' });
+    assert.equal(notFound404.status, 502);
+    assert.equal(notFound404.code, 'GEMINI_MODEL_NOT_FOUND');
+    assert.equal(notFound404.isAuthError, false);
+    assert.equal(notFound404.retryable, false);
+
+    const correctiveWords = buildCorrectiveInstruction(
+      new GeminiApiError('blocked words', 502, 'DISALLOWED_CONTENT', undefined, ['short', 'buy']),
+    );
+    assert.ok(correctiveWords.includes('short, buy'));
+
+    const correctiveNums = buildCorrectiveInstruction(
+      new GeminiApiError('ungrounded numbers', 502, 'UNGROUNDED_OUTPUT', [99500, 14]),
+    );
+    assert.ok(correctiveNums.includes('99500, 14'));
+  });
 });
+

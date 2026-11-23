@@ -86,6 +86,33 @@ service cloud.firestore {
         && isNum(t.reduceChangePointAgeBars);
     }
 
+    function isValidListStringElem(list, idx, maxLen) {
+      return list.size() <= idx
+        || (list[idx] is string && list[idx].size() >= 1 && list[idx].size() <= maxLen);
+    }
+
+    function areValidStringsUpTo16(list, maxLen) {
+      return list is list
+        && list.size() >= 1
+        && list.size() <= 16
+        && isValidListStringElem(list, 0, maxLen)
+        && isValidListStringElem(list, 1, maxLen)
+        && isValidListStringElem(list, 2, maxLen)
+        && isValidListStringElem(list, 3, maxLen)
+        && isValidListStringElem(list, 4, maxLen)
+        && isValidListStringElem(list, 5, maxLen)
+        && isValidListStringElem(list, 6, maxLen)
+        && isValidListStringElem(list, 7, maxLen)
+        && isValidListStringElem(list, 8, maxLen)
+        && isValidListStringElem(list, 9, maxLen)
+        && isValidListStringElem(list, 10, maxLen)
+        && isValidListStringElem(list, 11, maxLen)
+        && isValidListStringElem(list, 12, maxLen)
+        && isValidListStringElem(list, 13, maxLen)
+        && isValidListStringElem(list, 14, maxLen)
+        && isValidListStringElem(list, 15, maxLen);
+    }
+
     function isValidDecisionEntry(data) {
       return data.keys().hasAll([
           'timestamp',
@@ -122,16 +149,8 @@ service cloud.firestore {
         && data.timeframe.size() >= 1
         && data.timeframe.size() <= 40
         && data.decision in ['CONTINUE', 'REDUCE_SIZE', 'PAUSE', 'NO_DECISION']
-        && data.firedRules is list
-        && data.firedRules.size() >= 1
-        && data.firedRules.size() <= 16
-        && data.firedRules[0] is string
-        && data.firedRules[0].size() <= 64
-        && data.reasons is list
-        && data.reasons.size() >= 1
-        && data.reasons.size() <= 16
-        && data.reasons[0] is string
-        && data.reasons[0].size() <= 300
+        && areValidStringsUpTo16(data.firedRules, 64)
+        && areValidStringsUpTo16(data.reasons, 300)
         && isValidInputsMap(data.inputs)
         && isValidThresholdsMap(data.thresholdsUsed)
         && isNullableNum(data.lastCandleTime)

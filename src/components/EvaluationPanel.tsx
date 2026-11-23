@@ -129,7 +129,9 @@ function MetricsCell({
         <span className="font-semibold text-slate-100">{formatPct(ratio)}</span>
         <span className="text-[11px] text-slate-400">{countLabel}</span>
       </div>
-      <div className="text-[11px] text-sky-300/90">Wilson 95%: {formatWilson(ci)}</div>
+      <div className="text-[11px] text-sky-300/90">
+        Wilson 95% (optimistic; assumes independence): {formatWilson(ci)}
+      </div>
       <div className="text-[11px] text-slate-400">
         Shift baseline: {formatBaseline(baselineStats)}
       </div>
@@ -198,7 +200,7 @@ function EvaluationMetricsTable({
               <th scope="row" className="px-4 py-3 align-top font-medium text-slate-300">
                 <div>Recall (hits / events)</div>
                 <div className="mt-0.5 text-[11px] font-normal text-slate-500">
-                  With Wilson 95% CI &amp; circular-shift baseline
+                  With Wilson 95% CI (optimistic; assumes independence) &amp; circular-shift baseline
                 </div>
               </th>
               {columns.map((col) => (
@@ -212,7 +214,7 @@ function EvaluationMetricsTable({
               <th scope="row" className="px-4 py-3 align-top font-medium text-slate-300">
                 <div>Precision (true episodes / episodes)</div>
                 <div className="mt-0.5 text-[11px] font-normal text-slate-500">
-                  With Wilson 95% CI &amp; circular-shift baseline
+                  With Wilson 95% CI (optimistic; assumes independence) &amp; circular-shift baseline
                 </div>
               </th>
               {columns.map((col) => (
@@ -586,6 +588,18 @@ export function EvaluationPanel({
 
         {!isLoading && !error && report && (
           <div className="space-y-4">
+            {report.gapCount > 0 && (
+              <div
+                role="status"
+                className="flex items-center gap-2 rounded-md border border-amber-500/35 bg-amber-950/20 px-4 py-2 text-xs text-amber-200"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden="true" />
+                <span className="font-mono">
+                  {report.gapCount} gap(s) detected in loaded history (cross-gap log returns skipped in regime/CUSUM calculation).
+                </span>
+              </div>
+            )}
+
             {hasAnySampleWarning && (
               <div
                 role="status"

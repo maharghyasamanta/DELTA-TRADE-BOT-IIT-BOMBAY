@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { User } from 'firebase/auth';
 import { AlertCircle, LogIn, RefreshCw, Trash2 } from 'lucide-react';
+import { formatFirestoreErrorForUi } from '../firebase';
 import {
   deleteDecisionLogEntry,
   fetchDecisionLog,
@@ -39,7 +40,11 @@ export function DecisionLogPanel({
 }: DecisionLogPanelProps) {
   const [records, setRecords] = useState<DecisionLogRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<{ message: string; timestamp: string } | null>(null);
+  const [error, setError] = useState<{
+    code: string | null;
+    message: string;
+    timestamp: string;
+  } | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -64,8 +69,10 @@ export function DecisionLogPanel({
       },
       (err) => {
         setIsLoading(false);
+        const formatted = formatFirestoreErrorForUi(err);
         setError({
-          message: err.message,
+          code: formatted.code,
+          message: formatted.message,
           timestamp: new Date().toISOString(),
         });
       },
@@ -82,8 +89,10 @@ export function DecisionLogPanel({
       const next = await fetchDecisionLog(user.uid);
       setRecords(next);
     } catch (err) {
+      const formatted = formatFirestoreErrorForUi(err);
       setError({
-        message: err instanceof Error ? err.message : 'Failed to refresh decision log',
+        code: formatted.code,
+        message: formatted.message,
         timestamp: new Date().toISOString(),
       });
     } finally {
@@ -100,8 +109,10 @@ export function DecisionLogPanel({
         await deleteDecisionLogEntry(user.uid, docId);
         setConfirmDeleteId(null);
       } catch (err) {
+        const formatted = formatFirestoreErrorForUi(err);
         setError({
-          message: err instanceof Error ? err.message : 'Failed to delete entry',
+          code: formatted.code,
+          message: formatted.message,
           timestamp: new Date().toISOString(),
         });
       } finally {
@@ -177,7 +188,10 @@ export function DecisionLogPanel({
               >
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
                 <div className="space-y-0.5 font-mono">
-                  <div>{error.message}</div>
+                  <div>
+                    {error.code ? <span className="font-semibold">[{error.code}] </span> : null}
+                    {error.message}
+                  </div>
                   <div className="text-[11px] text-rose-400/80">
                     At {formatTimestamp(error.timestamp)}
                   </div>
@@ -215,7 +229,7 @@ export function DecisionLogPanel({
                         <td className="py-2.5 pr-4 whitespace-nowrap text-slate-300">
                           {entry.timestampIso
                             ? entry.timestampIso.replace('T', ' ').slice(0, 19) + ' UTC'
-                            : 'Pending…'}
+                            : 'saving…'}
                         </td>
                         <td className="py-2.5 pr-4 whitespace-nowrap text-slate-300">
                           {entry.source}

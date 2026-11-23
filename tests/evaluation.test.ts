@@ -279,3 +279,56 @@ test('evaluateDetector returns null metrics and insufficientSample flag when eve
   assert.equal(report.firstHalf.allAlerts.insufficientSample, true);
   assert.equal(report.secondHalf.allAlerts.insufficientSample, true);
 });
+
+test('buildAlertEpisodes classifies a long episode [1..7] as true when an event starts at bar 9 <= endBar + H', () => {
+  // Episode spans bars [1..7] (length 7), H = 3 => accepts event starts in [1, 7 + 3] = [1, 10].
+  // Event starts at bar 9 (> 1 + 3, but <= 7 + 3) => must be true episode, NOT false alarm.
+  const alerts = [
+    false, true, true, true, true, true, true, true, false, false, false, false,
+  ];
+  const times = alerts.map((_, idx) => 1_700_000_000 + idx * 900);
+  const events: SpikeEvent[] = [
+    {
+      startBar: 9,
+      endBar: 11,
+      startTime: times[9],
+      endTime: times[11],
+      forwardReturn: 0.14,
+      absForwardReturn: 0.14,
+      trailingSigmaH: 0.02,
+      thresholdReturn: 0.05,
+    },
+  ];
+
+  const episodes = buildAlertEpisodes(alerts, times, events, 3);
+  assert.equal(episodes.length, 1);
+  assert.equal(episodes[0].startBar, 1);
+  assert.equal(episodes[0].endBar, 7);
+  assert.equal(episodes[0].isTrueEpisode, true);
+  assert.equal(episodes[0].matchedEventStartBar, 9);
+});
+
+test('evaluateDetector reports gapCount accurately when history contains overnight gaps', () => {
+  const candles: CandlePoint[] = [];
+  let t = 1_700_000_000;
+  for (let i = 0; i < 30; i += 1) {
+    if (i === 15) {
+      t += 12 * 3600; // 12h overnight gap
+    } else if (i > 0) {
+      t += 900;
+    }
+    candles.push({
+      time: t,
+      open: 100,
+      high: 100,
+      low: 100,
+      close: i >= 15 ? 1000 : 100,
+      volume: 100,
+    });
+  }
+
+  const report = evaluateDetector(candles);
+  assert.equal(report.gapCount, 1);
+  assert.equal(report.gapTimes.length, 1);
+  assert.equal(report.whole.allAlerts.alertBarCount, 0);
+});

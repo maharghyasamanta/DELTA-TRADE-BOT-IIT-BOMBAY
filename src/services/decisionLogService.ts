@@ -14,21 +14,13 @@ import {
 } from 'firebase/firestore';
 import type { GuardrailDecision, GuardrailEvaluation, GuardrailThresholds } from '../engine/guardrails';
 import { db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  sanitizeDecisionPayload,
+  type DecisionSource,
+  type LogDecisionPayload,
+} from './decisionPayload';
 
-export type DecisionSource = 'Delta' | 'Alpaca';
-
-export interface LogDecisionPayload {
-  source: DecisionSource;
-  symbol: string;
-  timeframe: string;
-  decision: GuardrailDecision;
-  firedRules: readonly string[];
-  reasons: readonly string[];
-  inputs: GuardrailEvaluation['inputs'];
-  thresholdsUsed: GuardrailThresholds;
-  lastCandleTime: number | null;
-  candleCount: number;
-}
+export { sanitizeDecisionPayload, type DecisionSource, type LogDecisionPayload };
 
 export interface DecisionLogRecord {
   id: string;
@@ -109,29 +101,7 @@ export async function logGuardrailDecision(
   const path = getDecisionsPath(uid);
   const sanitizedDoc = {
     timestamp: serverTimestamp(),
-    source: payload.source,
-    symbol: payload.symbol.slice(0, 40),
-    timeframe: payload.timeframe.slice(0, 40),
-    decision: payload.decision,
-    firedRules: payload.firedRules.slice(0, 16).map((r) => r.slice(0, 64)),
-    reasons: payload.reasons.slice(0, 16).map((r) => r.slice(0, 300)),
-    inputs: {
-      score: payload.inputs.score,
-      volZ: payload.inputs.volZ,
-      trend: payload.inputs.trend,
-      changePointsInWindow: Math.max(0, payload.inputs.changePointsInWindow),
-      lastChangePointAgeBars: payload.inputs.lastChangePointAgeBars,
-    },
-    thresholdsUsed: {
-      pauseScore: payload.thresholdsUsed.pauseScore,
-      pauseVolZ: payload.thresholdsUsed.pauseVolZ,
-      pauseChangePointAgeBars: payload.thresholdsUsed.pauseChangePointAgeBars,
-      reduceScore: payload.thresholdsUsed.reduceScore,
-      reduceVolZ: payload.thresholdsUsed.reduceVolZ,
-      reduceChangePointAgeBars: payload.thresholdsUsed.reduceChangePointAgeBars,
-    },
-    lastCandleTime: payload.lastCandleTime,
-    candleCount: Math.max(0, payload.candleCount),
+    ...sanitizeDecisionPayload(payload),
   };
 
   try {

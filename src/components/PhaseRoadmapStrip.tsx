@@ -1,8 +1,11 @@
+import type { ExplainStatusResponse } from '../contracts/explain';
+
 interface PhaseRoadmapStripProps {
   firebaseConfigured?: boolean;
   isSignedIn?: boolean;
   geminiConfigured?: boolean | null;
   geminiVerified?: boolean;
+  explainStatus?: ExplainStatusResponse | null;
   phase5Completed?: boolean;
   phase5Error?: string | null;
   phase5Detail?: string | null;
@@ -13,6 +16,7 @@ export function PhaseRoadmapStrip({
   isSignedIn = false,
   geminiConfigured = null,
   geminiVerified = false,
+  explainStatus = null,
   phase5Completed = false,
   phase5Error = null,
   phase5Detail = null,
@@ -21,12 +25,43 @@ export function PhaseRoadmapStrip({
     firebaseConfigured && isSignedIn
       ? 'Ready'
       : 'Setup Pending';
+
+  const bothModelsMissing =
+    geminiConfigured === true &&
+    explainStatus?.primaryModelOk === false &&
+    explainStatus?.fallbackModelOk === false;
+
   const phase4Status =
     geminiConfigured === null
       ? 'Checking'
-      : geminiConfigured && geminiVerified
-        ? 'Active'
-        : 'Setup Pending';
+      : bothModelsMissing
+        ? 'Model Not Found'
+        : geminiConfigured && geminiVerified
+          ? 'Active'
+          : 'Setup Pending';
+
+  const phase4Detail = (() => {
+    if (geminiConfigured === null) {
+      return 'Checking server-side Gemini configuration...';
+    }
+    if (geminiConfigured === false) {
+      return 'Blocked: GEMINI_API_KEY not set in server environment';
+    }
+    if (bothModelsMissing) {
+      return `Model not found: ${explainStatus?.modelCheckError ?? `${explainStatus?.primaryModel ?? 'primary'} / ${explainStatus?.fallbackModel ?? 'fallback'} unavailable`}`;
+    }
+    if (geminiVerified) {
+      return `Verified live (${explainStatus?.primaryModel ?? 'gemini-4-hydrogen'}) with deterministic number-grounding guard`;
+    }
+    const primaryLabel = explainStatus?.primaryModel ?? 'gemini-4-hydrogen';
+    const fallbackLabel = explainStatus?.fallbackModel ?? 'gemini-3.1-flash-lite';
+    const modelNote =
+      explainStatus?.primaryModelOk === false
+        ? `primary "${primaryLabel}" not found, fallback "${fallbackLabel}" available`
+        : `${primaryLabel} / ${fallbackLabel}`;
+    return `Configured (${modelNote}); click "Explain these numbers" to verify live`;
+  })();
+
   const phase5Status = phase5Completed ? 'Active' : 'Setup Pending';
   const phase5ResolvedDetail = phase5Completed
     ? (phase5Detail ?? 'Verified live: historical spike lead-time & false-alarm audit completed')
@@ -61,14 +96,7 @@ export function PhaseRoadmapStrip({
       phase: 'Phase 4',
       title: 'Gemini Structured Explanations',
       status: phase4Status,
-      detail:
-        geminiConfigured === null
-          ? 'Checking server-side Gemini configuration...'
-          : geminiConfigured === false
-            ? 'Blocked: GEMINI_API_KEY not set in server environment'
-            : geminiVerified
-              ? 'Verified live end to end with deterministic number-grounding guard'
-              : 'Configured (gemini-3.8-flash / gemini-3.5-flash-lite); click "Explain these numbers" to verify live (may see temporary 503 spikes)',
+      detail: phase4Detail,
     },
     {
       phase: 'Phase 5',
@@ -95,7 +123,7 @@ export function PhaseRoadmapStrip({
               ? 'signed in (ready for Firestore test)'
               : 'awaiting sign-in for Firestore test'
             : 'setup pending (missing Firebase config)'}{' '}
-          · Phase 4 {geminiVerified ? 'active' : 'setup pending'} · Phase 5{' '}
+          · Phase 4 {geminiVerified ? 'active' : bothModelsMissing ? 'model not found' : 'setup pending'} · Phase 5{' '}
           {phase5Completed ? 'active' : 'setup pending'}
         </span>
       </div>
@@ -105,6 +133,7 @@ export function PhaseRoadmapStrip({
           const isActive = item.status === 'Active';
           const isReady = item.status === 'Ready';
           const isPending = item.status === 'Setup Pending';
+          const isError = item.status === 'Model Not Found';
           return (
             <div
               key={item.phase}
@@ -118,9 +147,11 @@ export function PhaseRoadmapStrip({
                       ? 'font-medium text-emerald-400'
                       : isReady
                         ? 'font-medium text-sky-300'
-                        : isPending
-                          ? 'font-medium text-amber-300'
-                          : 'text-slate-500'
+                        : isError
+                          ? 'font-medium text-rose-400'
+                          : isPending
+                            ? 'font-medium text-amber-300'
+                            : 'text-slate-500'
                   }
                 >
                   {item.status}

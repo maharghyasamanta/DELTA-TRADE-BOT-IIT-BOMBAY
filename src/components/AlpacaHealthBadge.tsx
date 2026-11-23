@@ -81,14 +81,14 @@ export function AlpacaHealthBadge({
       StatusIcon = Activity;
       tooltip = activeSymbol
         ? `Source: Alpaca · Last success: ${successLabel} · Click to run a live latest-trade check for ${activeSymbol}`
-        : `Source: Alpaca · Last success: ${successLabel} · Last updated: ${checkedLabel}`;
+        : `Source: Alpaca · Last success: ${successLabel} · Click to ping SPY`;
     } else {
-      label = 'Alpaca Configured — no successful call yet';
+      label = 'Alpaca Configured — checking connection…';
       toneClass = 'text-slate-300 border-slate-700/80 bg-slate-900/80';
       StatusIcon = Activity;
       tooltip = activeSymbol
         ? `Source: Alpaca · Click to run a live latest-trade check for ${activeSymbol}`
-        : `Source: Alpaca · Configured, awaiting first call · Last updated: ${checkedLabel}`;
+        : `Source: Alpaca · Configured · Click to ping SPY · Last updated: ${checkedLabel}`;
     }
   }
 

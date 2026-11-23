@@ -62,6 +62,15 @@ export function fetchAlpacaStatus(signal?: AbortSignal): Promise<AlpacaStatusRes
   return fetchJson<AlpacaStatusResponse>('/api/alpaca/status', signal);
 }
 
+export function pingAlpaca(
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; symbol: string; fetchedAt: string; cached: boolean }> {
+  return fetchJson<{ ok: boolean; symbol: string; fetchedAt: string; cached: boolean }>(
+    '/api/alpaca/ping',
+    signal,
+  );
+}
+
 export function validateAlpacaSymbol(
   symbol: string,
   signal?: AbortSignal,

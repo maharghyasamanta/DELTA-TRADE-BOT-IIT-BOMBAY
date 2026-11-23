@@ -3,6 +3,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import {
   checkDeltaRestHealth,
+  DELTA_RESOLUTION_SECONDS,
   DeltaApiError,
   fetchCandlesHistory,
   fetchLiveProducts,
@@ -186,8 +187,9 @@ export function createDeltaRouter(): Router {
       return;
     }
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const end = Number.isFinite(endRaw) && endRaw > 0 ? Math.floor(endRaw) : nowSec;
+    const stepSec = DELTA_RESOLUTION_SECONDS[resolutionRaw];
+    const nowBucketSec = Math.floor(Date.now() / 1000 / stepSec) * stepSec;
+    const end = Number.isFinite(endRaw) && endRaw > 0 ? Math.floor(endRaw) : nowBucketSec;
     const start =
       Number.isFinite(startRaw) && startRaw > 0 ? Math.floor(startRaw) : end - 86_400;
 
@@ -197,6 +199,18 @@ export function createDeltaRouter(): Router {
         400,
         'INVALID_TIME_RANGE',
         'start timestamp must be strictly earlier than end timestamp',
+        'Server Validator',
+      );
+      return;
+    }
+
+    const maxSpanSec = 4000 * stepSec;
+    if (end - start > maxSpanSec) {
+      sendError(
+        res,
+        400,
+        'RANGE_TOO_LARGE',
+        `Requested candle span (${end - start}s) exceeds maximum ${maxSpanSec}s for ${resolutionRaw}`,
         'Server Validator',
       );
       return;
@@ -248,6 +262,13 @@ export function createDeltaRouter(): Router {
     }
     const basis: CandlePriceBasis = basisRaw === 'mark' ? 'mark' : 'trade';
     const querySymbol = basis === 'mark' ? `MARK:${symbol}` : symbol;
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+
+    const admission = deltaStreamManager.canAcceptSubscriber(clientIp);
+    if (!admission.allowed) {
+      sendError(res, 429, 'TOO_MANY_STREAMS', admission.reason, 'Server Stream Limiter');
+      return;
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -264,6 +285,7 @@ export function createDeltaRouter(): Router {
     const subId = randomUUID();
     const unsubscribe = deltaStreamManager.addSubscriber({
       id: subId,
+      ip: clientIp,
       symbol,
       resolution: resolutionRaw,
       basis,

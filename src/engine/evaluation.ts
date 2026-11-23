@@ -15,6 +15,7 @@ import {
 } from './guardrails';
 import {
   computeRegimeSeries,
+  logReturns,
   type CandlePoint,
   type RegimeOptions,
 } from './regime';
@@ -220,6 +221,8 @@ export interface DetectorScopeReport {
 export interface DetectorEvaluationReport {
   options: ResolvedEvaluationOptions;
   candleCount: number;
+  gapCount: number;
+  gapTimes: ReadonlyArray<number>;
   startTime: number | null;
   endTime: number | null;
   splitIndex: number;
@@ -524,7 +527,7 @@ export function detectSpikeEvents(
 /**
  * Merge consecutive true alert bars inside [sliceStart, sliceEnd) into alert episodes
  * and classify each episode as a true episode or false alarm based on whether any event
- * starts within [episode.startBar, episode.startBar + H].
+ * starts within [episode.startBar, episode.endBar + H].
  */
 export function buildAlertEpisodes(
   alerts: readonly boolean[],
@@ -541,7 +544,7 @@ export function buildAlertEpisodes(
     let matchedEventStartBar: number | null = null;
     for (let eIdx = 0; eIdx < events.length; eIdx += 1) {
       const evStart = events[eIdx].startBar;
-      if (evStart >= startBar && evStart <= startBar + horizonBars) {
+      if (evStart >= startBar && evStart <= endBar + horizonBars) {
         matchedEventStartBar = evStart;
         break;
       }
@@ -846,6 +849,7 @@ export function evaluateDetector(
   rawOptions?: EvaluationOptions,
 ): DetectorEvaluationReport {
   const options = resolveEvaluationOptions(candles, rawOptions);
+  const lr = logReturns(candles);
   const bars = computeCausalGuardrailsSeries(candles, {
     regimeOptions: rawOptions?.regimeOptions,
     guardrailOptions: rawOptions?.guardrailOptions,
@@ -870,6 +874,8 @@ export function evaluateDetector(
   return {
     options,
     candleCount: n,
+    gapCount: lr.gapCount,
+    gapTimes: lr.gapTimes,
     startTime: n > 0 ? bars[0].time : null,
     endTime: n > 0 ? bars[n - 1].time : null,
     splitIndex,
