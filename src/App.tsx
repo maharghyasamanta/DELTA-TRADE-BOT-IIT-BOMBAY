@@ -437,9 +437,24 @@ export default function App() {
           >
             <div className="flex items-start gap-2.5 min-w-0">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" aria-hidden="true" />
-              <div className="min-w-0 space-y-0.5">
-                <p className="font-medium text-rose-100">Google Sign-In Error</p>
-                <p className="break-words text-rose-300/90">{firebaseAuth.authError.message}</p>
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-rose-100">Google Sign-In Error</p>
+                  {firebaseAuth.authError.code && (
+                    <span className="rounded border border-rose-500/40 bg-rose-950/60 px-1.5 py-0.5 font-mono text-[11px] text-rose-200">
+                      {firebaseAuth.authError.code}
+                    </span>
+                  )}
+                </div>
+                <p className="break-words font-mono text-[11px] text-rose-200/95">
+                  {firebaseAuth.authError.message}
+                </p>
+                {firebaseAuth.authError.code === 'auth/unauthorized-domain' &&
+                  typeof window !== 'undefined' && (
+                    <p className="break-words text-[11px] text-rose-300/90">
+                      Domain <span className="font-mono text-rose-100">{window.location.hostname}</span> is not in Firebase Auth Authorized Domains.
+                    </p>
+                  )}
                 <p className="font-mono text-[11px] text-rose-400/80 tabular-nums">
                   At {formatTimestamp(firebaseAuth.authError.timestamp)}
                 </p>

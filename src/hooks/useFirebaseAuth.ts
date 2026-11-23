@@ -13,8 +13,33 @@ import {
 } from '../firebase';
 
 export interface AuthErrorState {
+  code: string | null;
   message: string;
   timestamp: string;
+}
+
+function extractAuthError(
+  err: unknown,
+  fallbackMessage: string,
+): { code: string | null; message: string } {
+  if (err && typeof err === 'object') {
+    const record = err as { code?: unknown; message?: unknown };
+    const code =
+      typeof record.code === 'string' && record.code.trim()
+        ? record.code.trim()
+        : null;
+    const message =
+      typeof record.message === 'string' && record.message.trim()
+        ? record.message.trim()
+        : err instanceof Error && err.message.trim()
+          ? err.message.trim()
+          : fallbackMessage;
+    return { code, message };
+  }
+  if (typeof err === 'string' && err.trim()) {
+    return { code: null, message: err.trim() };
+  }
+  return { code: null, message: fallbackMessage };
 }
 
 export function useFirebaseAuth() {
@@ -38,8 +63,10 @@ export function useFirebaseAuth() {
       },
       (err) => {
         setAuthReady(true);
+        const extracted = extractAuthError(err, 'Firebase authentication listener failed.');
         setAuthError({
-          message: err.message,
+          code: extracted.code,
+          message: extracted.message,
           timestamp: new Date().toISOString(),
         });
       },
@@ -51,6 +78,7 @@ export function useFirebaseAuth() {
   const signInWithGoogle = useCallback(async () => {
     if (!auth || !googleProvider) {
       setAuthError({
+        code: 'auth/not-configured',
         message:
           firebaseConfigError ?? 'Firebase Auth is not configured in this environment.',
         timestamp: new Date().toISOString(),
@@ -63,8 +91,10 @@ export function useFirebaseAuth() {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (err) {
+      const extracted = extractAuthError(err, 'Google sign-in failed.');
       setAuthError({
-        message: err instanceof Error ? err.message : 'Google sign-in failed.',
+        code: extracted.code,
+        message: extracted.message,
         timestamp: new Date().toISOString(),
       });
     } finally {
@@ -78,8 +108,10 @@ export function useFirebaseAuth() {
     try {
       await signOut(auth);
     } catch (err) {
+      const extracted = extractAuthError(err, 'Sign-out failed.');
       setAuthError({
-        message: err instanceof Error ? err.message : 'Sign-out failed.',
+        code: extracted.code,
+        message: extracted.message,
         timestamp: new Date().toISOString(),
       });
     }
