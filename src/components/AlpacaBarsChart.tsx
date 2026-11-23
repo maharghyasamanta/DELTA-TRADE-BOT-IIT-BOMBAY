@@ -5,10 +5,14 @@ import {
   CrosshairMode,
   HistogramSeries,
   createChart,
+  createSeriesMarkers,
   type CandlestickData,
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
@@ -37,6 +41,7 @@ interface AlpacaBarsChartProps {
   feed: string | null;
   onRetry: () => void;
   onSwitchToIex?: () => void;
+  markers?: ReadonlyArray<{ time: number; direction: 'up' | 'down' }>;
 }
 
 const NOT_CONFIGURED_MESSAGE =
@@ -61,11 +66,13 @@ export function AlpacaBarsChart({
   feed,
   onRetry,
   onSwitchToIex,
+  markers,
 }: AlpacaBarsChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
 
   const [hoveredCandle, setHoveredCandle] = useState<NormalizedCandle | null>(null);
 
@@ -136,9 +143,12 @@ export function AlpacaBarsChart({
       }
     });
 
+    const markersPlugin = createSeriesMarkers<Time>(candleSeries, []);
+
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+    markersPluginRef.current = markersPlugin;
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -152,6 +162,7 @@ export function AlpacaBarsChart({
 
     return () => {
       resizeObserver.disconnect();
+      markersPluginRef.current = null;
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -191,6 +202,29 @@ export function AlpacaBarsChart({
       chartRef.current.timeScale().fitContent();
     }
   }, [candles, symbol, error]);
+
+  // Sync optional CUSUM regime change-point markers
+  useEffect(() => {
+    const plugin = markersPluginRef.current;
+    if (!plugin) return;
+
+    if (!symbol || error || !markers || markers.length === 0 || candles.length === 0) {
+      plugin.setMarkers([]);
+      return;
+    }
+
+    const sortedMarkers: SeriesMarker<Time>[] = [...markers]
+      .sort((a, b) => a.time - b.time)
+      .map((m) => ({
+        time: m.time as UTCTimestamp,
+        position: m.direction === 'up' ? 'belowBar' : 'aboveBar',
+        shape: m.direction === 'up' ? 'arrowUp' : 'arrowDown',
+        color: m.direction === 'up' ? '#38BDF8' : '#F59E0B',
+        text: m.direction === 'up' ? 'CP+' : 'CP-',
+      }));
+
+    plugin.setMarkers(sortedMarkers);
+  }, [markers, candles, symbol, error]);
 
   const activeBar = hoveredCandle || candles[candles.length - 1] || null;
   const activeBarTimeLabel = activeBar

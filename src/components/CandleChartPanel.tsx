@@ -5,10 +5,14 @@ import {
   CrosshairMode,
   HistogramSeries,
   createChart,
+  createSeriesMarkers,
   type CandlestickData,
   type HistogramData,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
+  type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { AlertCircle, RefreshCw } from 'lucide-react';
@@ -59,6 +63,7 @@ interface CandleChartPanelProps {
   fetchedAt: string | null;
   querySymbol: string | null;
   onRetry: () => void;
+  markers?: ReadonlyArray<{ time: number; direction: 'up' | 'down' }>;
 }
 
 export function CandleChartPanel({
@@ -78,11 +83,13 @@ export function CandleChartPanel({
   fetchedAt,
   querySymbol,
   onRetry,
+  markers,
 }: CandleChartPanelProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const lastBarTimeRef = useRef<number>(0);
 
   const [hoveredCandle, setHoveredCandle] = useState<DeltaCandle | null>(null);
@@ -158,9 +165,12 @@ export function CandleChartPanel({
       }
     });
 
+    const markersPlugin = createSeriesMarkers<Time>(candleSeries, []);
+
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     volumeSeriesRef.current = volumeSeries;
+    markersPluginRef.current = markersPlugin;
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -174,6 +184,7 @@ export function CandleChartPanel({
 
     return () => {
       resizeObserver.disconnect();
+      markersPluginRef.current = null;
       chart.remove();
       chartRef.current = null;
       candleSeriesRef.current = null;
@@ -249,6 +260,29 @@ export function CandleChartPanel({
           : 'rgba(220, 38, 38, 0.35)',
     });
   }, [liveCandle]);
+
+  // Sync optional CUSUM regime change-point markers
+  useEffect(() => {
+    const plugin = markersPluginRef.current;
+    if (!plugin) return;
+
+    if (!markers || markers.length === 0 || candles.length === 0) {
+      plugin.setMarkers([]);
+      return;
+    }
+
+    const sortedMarkers: SeriesMarker<Time>[] = [...markers]
+      .sort((a, b) => a.time - b.time)
+      .map((m) => ({
+        time: m.time as UTCTimestamp,
+        position: m.direction === 'up' ? 'belowBar' : 'aboveBar',
+        shape: m.direction === 'up' ? 'arrowUp' : 'arrowDown',
+        color: m.direction === 'up' ? '#38BDF8' : '#F59E0B',
+        text: m.direction === 'up' ? 'CP+' : 'CP-',
+      }));
+
+    plugin.setMarkers(sortedMarkers);
+  }, [markers, candles, liveCandle]);
 
   const activeBar = hoveredCandle || liveCandle || candles[candles.length - 1] || null;
   const activeBarTimeLabel = activeBar

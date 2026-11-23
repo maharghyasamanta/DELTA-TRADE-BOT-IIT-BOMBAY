@@ -20,6 +20,7 @@ import {
 } from './components/InstrumentPicker';
 import { LiveTickerStrip } from './components/LiveTickerStrip';
 import { PhaseRoadmapStrip } from './components/PhaseRoadmapStrip';
+import { RegimePanel } from './components/RegimePanel';
 import { TopBar } from './components/TopBar';
 import type {
   AlpacaFeed,
@@ -36,6 +37,7 @@ import type {
   HealthStatusResponse,
 } from './contracts/delta';
 import { useAlpacaBars } from './hooks/useAlpacaBars';
+import { useRegimeSeries } from './hooks/useRegimeSeries';
 import { formatTimestamp } from './utils/format';
 
 interface ErrorState {
@@ -268,6 +270,24 @@ export default function App() {
     onAfterRequest: loadAlpacaStatus,
   });
 
+  const deltaDisplayCandles = useMemo(() => {
+    if (!liveCandle) return candles;
+    if (candles.length === 0) return [liveCandle];
+    const last = candles[candles.length - 1];
+    if (liveCandle.time < last.time) return candles;
+    if (liveCandle.time === last.time) {
+      return [...candles.slice(0, -1), liveCandle];
+    }
+    return [...candles, liveCandle];
+  }, [candles, liveCandle]);
+
+  const activeCandles = useMemo(
+    () => (dataSource === 'delta' ? deltaDisplayCandles : alpacaBars.candles),
+    [dataSource, deltaDisplayCandles, alpacaBars.candles],
+  );
+
+  const regimeResult = useRegimeSeries(activeCandles);
+
   // Reset ticker and candles cleanly when switching instrument
   const handleSelectSymbol = useCallback((symbol: string) => {
     setSelectedSymbol(symbol);
@@ -405,6 +425,14 @@ export default function App() {
                       void loadCandles(selectedSymbol, resolution, lookbackId, basis);
                     }
                   }}
+                  markers={dataSource === 'delta' ? regimeResult.markers : undefined}
+                />
+
+                <RegimePanel
+                  result={regimeResult}
+                  sourceLabel="Delta"
+                  timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
+                  symbol={selectedSymbol}
                 />
               </>
             ) : (
@@ -452,6 +480,14 @@ export default function App() {
                   feed={alpacaBars.feed}
                   onRetry={alpacaBars.refetch}
                   onSwitchToIex={() => setAlpacaFeed('iex')}
+                  markers={dataSource === 'alpaca' ? regimeResult.markers : undefined}
+                />
+
+                <RegimePanel
+                  result={regimeResult}
+                  sourceLabel="Alpaca"
+                  timeframeLabel={alpacaTimeframe}
+                  symbol={alpacaSymbol}
                 />
               </>
             )}
