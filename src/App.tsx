@@ -149,6 +149,8 @@ export default function App() {
       const status = await syncAlpacaStatusOnly();
       if (status && status.lastError === null && status.lastSuccessAt !== null) {
         setAlpacaLiveError(null);
+      } else if (status && status.lastError !== null) {
+        setAlpacaLiveSuccessAt(null);
       }
     } finally {
       setIsCheckingAlpaca(false);
