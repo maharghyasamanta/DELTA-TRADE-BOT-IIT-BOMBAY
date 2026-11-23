@@ -3,6 +3,9 @@ interface PhaseRoadmapStripProps {
   isSignedIn?: boolean;
   geminiConfigured?: boolean | null;
   geminiVerified?: boolean;
+  phase5Completed?: boolean;
+  phase5Error?: string | null;
+  phase5Detail?: string | null;
 }
 
 export function PhaseRoadmapStrip({
@@ -10,6 +13,9 @@ export function PhaseRoadmapStrip({
   isSignedIn = false,
   geminiConfigured = null,
   geminiVerified = false,
+  phase5Completed = false,
+  phase5Error = null,
+  phase5Detail = null,
 }: PhaseRoadmapStripProps) {
   const phase3Status =
     firebaseConfigured && isSignedIn
@@ -21,6 +27,12 @@ export function PhaseRoadmapStrip({
       : geminiConfigured && geminiVerified
         ? 'Active'
         : 'Setup Pending';
+  const phase5Status = phase5Completed ? 'Active' : 'Setup Pending';
+  const phase5ResolvedDetail = phase5Completed
+    ? (phase5Detail ?? 'Verified live: historical spike lead-time & false-alarm audit completed')
+    : phase5Error
+      ? `Blocked: ${phase5Error}`
+      : 'Click "Run evaluation" in Phase 5 above to run the audit on live historical candles';
 
   const phases = [
     {
@@ -61,8 +73,8 @@ export function PhaseRoadmapStrip({
     {
       phase: 'Phase 5',
       title: 'Detector Evaluation Panel',
-      status: 'Planned',
-      detail: 'Not built yet: historical spike lead-time & false-alarm audit',
+      status: phase5Status,
+      detail: phase5ResolvedDetail,
     },
   ] as const;
 
@@ -83,7 +95,8 @@ export function PhaseRoadmapStrip({
               ? 'signed in (ready for Firestore test)'
               : 'awaiting sign-in for Firestore test'
             : 'setup pending (missing Firebase config)'}{' '}
-          · Phase 4 {geminiVerified ? 'active' : 'setup pending'}
+          · Phase 4 {geminiVerified ? 'active' : 'setup pending'} · Phase 5{' '}
+          {phase5Completed ? 'active' : 'setup pending'}
         </span>
       </div>
 

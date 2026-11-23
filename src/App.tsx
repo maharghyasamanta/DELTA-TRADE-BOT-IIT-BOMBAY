@@ -18,6 +18,7 @@ import {
 } from './components/CandleChartPanel';
 import { ContractSpecsPanel } from './components/ContractSpecsPanel';
 import { DecisionLogPanel } from './components/DecisionLogPanel';
+import { EvaluationPanel } from './components/EvaluationPanel';
 import { ExplanationPanel } from './components/ExplanationPanel';
 import { GuardrailPanel } from './components/GuardrailPanel';
 import {
@@ -71,6 +72,11 @@ export default function App() {
   const [alpacaTimeframe, setAlpacaTimeframe] = useState<AlpacaTimeframe>('1Day');
   const [alpacaFeed, setAlpacaFeed] = useState<AlpacaFeed | undefined>(undefined);
   const [explainStatus, setExplainStatus] = useState<ExplainStatusResponse | null>(null);
+  const [phase5Status, setPhase5Status] = useState<{
+    completed: boolean;
+    errorMessage: string | null;
+    summaryDetail: string | null;
+  }>({ completed: false, errorMessage: null, summaryDetail: null });
 
   // Live products catalog
   const [products, setProducts] = useState<DeltaProductSummary[]>([]);
@@ -556,6 +562,13 @@ export default function App() {
                   explainStatus={explainStatus}
                   onAfterRequest={() => void loadExplainStatus()}
                 />
+
+                <EvaluationPanel
+                  source="delta"
+                  symbol={selectedSymbol}
+                  basis={basis}
+                  onEvaluationStateChange={setPhase5Status}
+                />
               </>
             ) : (
               <>
@@ -633,6 +646,15 @@ export default function App() {
                   explainStatus={explainStatus}
                   onAfterRequest={() => void loadExplainStatus()}
                 />
+
+                <EvaluationPanel
+                  source="alpaca"
+                  symbol={alpacaSymbol}
+                  alpacaFeed={alpacaFeed}
+                  alpacaConfigured={alpacaStatus ? alpacaStatus.configured : null}
+                  onAfterAlpacaRequest={() => void loadAlpacaStatus()}
+                  onEvaluationStateChange={setPhase5Status}
+                />
               </>
             )}
           </div>
@@ -659,6 +681,9 @@ export default function App() {
           isSignedIn={Boolean(firebaseAuth.user)}
           geminiConfigured={explainStatus ? explainStatus.configured : null}
           geminiVerified={Boolean(explainStatus?.lastSuccessAt)}
+          phase5Completed={phase5Status.completed}
+          phase5Error={phase5Status.errorMessage}
+          phase5Detail={phase5Status.summaryDetail}
         />
       </main>
 
