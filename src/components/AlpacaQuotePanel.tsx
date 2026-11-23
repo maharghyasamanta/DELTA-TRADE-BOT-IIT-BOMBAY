@@ -346,7 +346,7 @@ export function AlpacaQuotePanel({
       </div>
 
       {/* Metrics Grid — only fields actually present in the real Alpaca responses */}
-      <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-6">
         {quote?.bp !== undefined && (
           <MetricItem label="Bid Price (bp)" value={formatPrice(quote.bp, 0.01)} />
         )}

@@ -213,7 +213,12 @@ async function fetchAlpacaJson<T>(path: string, shapePrefix: string): Promise<T>
           continue;
         }
 
-        const mappedCode = alpacaCode === 42210000 ? 'PLAN_RESTRICTION' : 'ALPACA_HTTP_ERROR';
+        const isPlanRestriction =
+          alpacaCode === 42210000 ||
+          (response.status === 403 &&
+            typeof message === 'string' &&
+            /subscription does not permit|sip/i.test(message));
+        const mappedCode = isPlanRestriction ? 'PLAN_RESTRICTION' : 'ALPACA_HTTP_ERROR';
         throw new AlpacaApiError(
           message || `Alpaca Market Data returned HTTP ${response.status}`,
           response.status,
