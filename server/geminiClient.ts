@@ -13,8 +13,8 @@ export { EXPLAIN_SYSTEM_INSTRUCTION };
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? '';
 export const GEMINI_CONFIGURED = Boolean(GEMINI_API_KEY);
 
-export const GEMINI_MODEL = 'gemini-4-hydrogen';
-export const GEMINI_FALLBACK_MODEL = 'gemini-3.1-flash-lite';
+export const GEMINI_MODEL = 'gemini-3.8-flash';
+export const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash-lite';
 export const EXPLAIN_CACHE_TTL_MS = 60_000;
 export const EXPLAIN_TIMEOUT_MS = 15_000;
 export const EXPLAIN_MAX_ATTEMPTS = 1;
@@ -350,8 +350,8 @@ export async function explainSnapshot(snapshot: ExplainSnapshotRequest): Promise
   const modelsToTry = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL] as const;
 
   for (const activeModel of modelsToTry) {
-    const thinkingLevel =
-      activeModel === GEMINI_FALLBACK_MODEL ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW;
+    const supportsThinkingLevel =
+      activeModel.startsWith('gemini-3') || activeModel.startsWith('gemini-4');
 
     for (let attempt = 1; attempt <= EXPLAIN_MAX_ATTEMPTS; attempt += 1) {
       const startedAt = Date.now();
@@ -362,7 +362,7 @@ export async function explainSnapshot(snapshot: ExplainSnapshotRequest): Promise
           config: {
             systemInstruction: EXPLAIN_SYSTEM_INSTRUCTION,
             responseMimeType: 'application/json',
-            thinkingConfig: { thinkingLevel },
+            ...(supportsThinkingLevel ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
             abortSignal: AbortSignal.timeout(EXPLAIN_TIMEOUT_MS),
             responseSchema: {
               type: Type.OBJECT,

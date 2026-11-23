@@ -13,42 +13,37 @@ export function PhaseRoadmapStrip({
 }: PhaseRoadmapStripProps) {
   const phase3Status =
     firebaseConfigured && isSignedIn
-      ? 'Active'
-      : firebaseConfigured
-        ? 'Ready'
-        : 'Setup Pending';
+      ? 'Ready'
+      : 'Setup Pending';
   const phase4Status =
     geminiConfigured === null
       ? 'Checking'
       : geminiConfigured && geminiVerified
         ? 'Active'
-        : geminiConfigured
-          ? 'Ready'
-          : 'Setup Pending';
+        : 'Setup Pending';
 
   const phases = [
     {
       phase: 'Phase 1',
       title: 'Delta Proxy, Picker, Live Ticker & Candle Chart',
       status: 'Active',
-      detail: 'Live REST proxy + server WebSocket SSE stream + Lightweight Charts',
+      detail: 'Verified live: Delta REST proxy, SSE WebSocket stream, ticker & candle chart',
     },
     {
       phase: 'Phase 2',
       title: 'Regime Engine & Chart Markers',
       status: 'Active',
-      detail: 'Vol z-score, trend strength, CUSUM change-point, 0–100 score',
+      detail: 'Verified live: vol z-score, trend strength, CUSUM markers & 0–100 score',
     },
     {
       phase: 'Phase 3',
       title: 'Guardrail Rules & Firestore Decision Log',
       status: phase3Status,
-      detail:
-        firebaseConfigured && isSignedIn
-          ? 'Google Sign-In active; Firestore decision log ready for write/list/delete'
-          : firebaseConfigured
-            ? 'Firebase config & rules deployed; sign in with Google to persist decisions'
-            : 'Rules live in UI; Google Sign-In & Firestore log await Firebase config',
+      detail: !firebaseConfigured
+        ? 'Guardrail rules live; Firestore log blocked: missing Firebase config'
+        : isSignedIn
+          ? 'Guardrail rules live & Google Sign-In active; log/list/delete ready for live test'
+          : 'Guardrails live in UI; Firestore log blocked by auth/unauthorized-domain (add host in Firebase Auth Authorized Domains)',
     },
     {
       phase: 'Phase 4',
@@ -58,16 +53,16 @@ export function PhaseRoadmapStrip({
         geminiConfigured === null
           ? 'Checking server-side Gemini configuration...'
           : geminiConfigured === false
-            ? 'Explain route & UI ready; awaiting GEMINI_API_KEY in server environment'
+            ? 'Blocked: GEMINI_API_KEY not set in server environment'
             : geminiVerified
-              ? 'Server-side Gemini explanation verified with grounding guardrails'
-              : 'GEMINI_API_KEY configured; click "Explain these numbers" to run',
+              ? 'Verified live end to end with deterministic number-grounding guard'
+              : 'Configured (gemini-3.8-flash / gemini-3.5-flash-lite); click "Explain these numbers" to verify live (may see temporary 503 spikes)',
     },
     {
       phase: 'Phase 5',
       title: 'Detector Evaluation Panel',
       status: 'Planned',
-      detail: 'Historical spike lead-time & false-alarm audit on real candles',
+      detail: 'Not built yet: historical spike lead-time & false-alarm audit',
     },
   ] as const;
 
@@ -82,13 +77,13 @@ export function PhaseRoadmapStrip({
           Build Delivery Phases
         </h2>
         <span className="text-[11px] text-slate-400">
-          Phases 1–2 active · Phase 3 guardrails active (
+          Phases 1–2 active · Phase 3{' '}
           {firebaseConfigured
             ? isSignedIn
-              ? 'Firebase signed in'
-              : 'Firebase ready · sign in to log'
-            : 'awaiting Firebase config'}
-          )
+              ? 'signed in (ready for Firestore test)'
+              : 'setup pending (auth/unauthorized-domain)'
+            : 'setup pending (missing Firebase config)'}{' '}
+          · Phase 4 {geminiVerified ? 'active' : 'setup pending'}
         </span>
       </div>
 
