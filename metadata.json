@@ -1,0 +1,6 @@
+{
+  "name": "Regime Sentinel",
+  "description": "Read-only market-regime monitor and explainable risk-guardrail dashboard for Futures and Options traders on Delta Exchange India.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
