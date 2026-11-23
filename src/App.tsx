@@ -538,15 +538,19 @@ export default function App() {
                     own tab with the fullscreen button so Google sign-in persists across reloads.
                   </p>
                 )}
-                {firebaseAuth.authError.code === 'auth/unauthorized-domain' &&
-                  typeof window !== 'undefined' && (
-                    <p className="break-words text-[11px] text-rose-300/90">
-                      Domain <span className="font-mono text-rose-100">{window.location.hostname}</span> is not in Firebase Auth Authorized Domains.
-                    </p>
-                  )}
                 <p className="font-mono text-[11px] text-rose-400/80 tabular-nums">
                   At {formatTimestamp(firebaseAuth.authError.timestamp)}
                 </p>
+                {(firebaseAuth.authError.code === 'auth/unauthorized-domain' ||
+                  firebaseAuth.authError.message.includes('auth/unauthorized-domain')) &&
+                  typeof window !== 'undefined' && (
+                    <p className="break-words text-[11px] text-rose-200">
+                      Add this domain in Firebase Console -&gt; Authentication -&gt; Settings -&gt; Authorized domains:{' '}
+                      <span className="font-mono font-semibold text-rose-50">
+                        {window.location.hostname}
+                      </span>
+                    </p>
+                  )}
               </div>
             </div>
             <button
