@@ -1,8 +1,12 @@
 interface PhaseRoadmapStripProps {
   firebaseConfigured?: boolean;
+  geminiConfigured?: boolean | null;
 }
 
-export function PhaseRoadmapStrip({ firebaseConfigured = false }: PhaseRoadmapStripProps) {
+export function PhaseRoadmapStrip({
+  firebaseConfigured = false,
+  geminiConfigured = null,
+}: PhaseRoadmapStripProps) {
   const phases = [
     {
       phase: 'Phase 1',
@@ -27,8 +31,11 @@ export function PhaseRoadmapStrip({ firebaseConfigured = false }: PhaseRoadmapSt
     {
       phase: 'Phase 4',
       title: 'Gemini Structured Explanations',
-      status: 'Planned',
-      detail: 'Server-side JSON explanations grounded strictly in computed metrics',
+      status: 'Setup Pending',
+      detail:
+        geminiConfigured === false
+          ? 'Explain route & UI ready; awaiting GEMINI_API_KEY in server environment'
+          : 'Explain route & UI ready; awaiting live end-to-end Gemini response verification',
     },
     {
       phase: 'Phase 5',

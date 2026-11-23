@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import { fetchAlpacaStatus } from './api/alpacaApi';
+import { fetchExplainStatus } from './api/explainApi';
 import {
   fetchCandles,
   fetchHealth,
@@ -17,6 +18,7 @@ import {
 } from './components/CandleChartPanel';
 import { ContractSpecsPanel } from './components/ContractSpecsPanel';
 import { DecisionLogPanel } from './components/DecisionLogPanel';
+import { ExplanationPanel } from './components/ExplanationPanel';
 import { GuardrailPanel } from './components/GuardrailPanel';
 import {
   InstrumentPicker,
@@ -31,6 +33,7 @@ import type {
   AlpacaStatusResponse,
   AlpacaTimeframe,
 } from './contracts/alpaca';
+import type { ExplainStatusResponse } from './contracts/explain';
 import type {
   CandlePriceBasis,
   CandleResolution,
@@ -67,6 +70,7 @@ export default function App() {
   const [alpacaRecentSymbols, setAlpacaRecentSymbols] = useState<string[]>([]);
   const [alpacaTimeframe, setAlpacaTimeframe] = useState<AlpacaTimeframe>('1Day');
   const [alpacaFeed, setAlpacaFeed] = useState<AlpacaFeed | undefined>(undefined);
+  const [explainStatus, setExplainStatus] = useState<ExplainStatusResponse | null>(null);
 
   // Live products catalog
   const [products, setProducts] = useState<DeltaProductSummary[]>([]);
@@ -115,6 +119,20 @@ export default function App() {
       );
     } finally {
       setIsCheckingAlpaca(false);
+    }
+  }, []);
+
+  const loadExplainStatus = useCallback(async () => {
+    try {
+      const status = await fetchExplainStatus();
+      setExplainStatus(status);
+    } catch {
+      setExplainStatus({
+        configured: false,
+        lastSuccessAt: null,
+        lastError: 'Unable to reach /api/explain/status',
+        checkedAt: new Date().toISOString(),
+      });
     }
   }, []);
 
@@ -242,17 +260,19 @@ export default function App() {
     [],
   );
 
-  // Initial load + 30s health polling (Delta + Alpaca)
+  // Initial load + 30s health polling (Delta + Alpaca + Explain)
   useEffect(() => {
     void loadHealth();
     void loadAlpacaStatus();
+    void loadExplainStatus();
     void loadProducts();
     const timer = setInterval(() => {
       void loadHealth();
       void loadAlpacaStatus();
+      void loadExplainStatus();
     }, 30_000);
     return () => clearInterval(timer);
-  }, [loadHealth, loadAlpacaStatus, loadProducts]);
+  }, [loadHealth, loadAlpacaStatus, loadExplainStatus, loadProducts]);
 
   const handleChangeDataSource = useCallback(
     (nextSource: MarketDataSource) => {
@@ -512,6 +532,15 @@ export default function App() {
                   isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
                   onSignIn={() => void firebaseAuth.signInWithGoogle()}
                 />
+
+                <ExplanationPanel
+                  regimeResult={regimeResult}
+                  sourceLabel="Delta"
+                  timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
+                  symbol={selectedSymbol}
+                  explainStatus={explainStatus}
+                  onAfterRequest={() => void loadExplainStatus()}
+                />
               </>
             ) : (
               <>
@@ -580,6 +609,15 @@ export default function App() {
                   isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
                   onSignIn={() => void firebaseAuth.signInWithGoogle()}
                 />
+
+                <ExplanationPanel
+                  regimeResult={regimeResult}
+                  sourceLabel="Alpaca"
+                  timeframeLabel={alpacaTimeframe}
+                  symbol={alpacaSymbol}
+                  explainStatus={explainStatus}
+                  onAfterRequest={() => void loadExplainStatus()}
+                />
               </>
             )}
           </div>
@@ -601,7 +639,10 @@ export default function App() {
           onSignIn={() => void firebaseAuth.signInWithGoogle()}
         />
 
-        <PhaseRoadmapStrip firebaseConfigured={firebaseAuth.isFirebaseConfigured} />
+        <PhaseRoadmapStrip
+          firebaseConfigured={firebaseAuth.isFirebaseConfigured}
+          geminiConfigured={explainStatus ? explainStatus.configured : null}
+        />
       </main>
 
       <footer className="border-t border-slate-800/80 bg-[#0B1120] px-6 py-4">
