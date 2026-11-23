@@ -61,7 +61,7 @@ export function TopBar({
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#0B1120]/95 backdrop-blur-sm">
-      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-8 px-6 py-3.5">
+      <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-x-4 gap-y-2.5 px-4 py-3 sm:px-6">
         {/* Zone 1: Single-element Brand Wordmark */}
         <a
           href="#monitor"
@@ -75,7 +75,7 @@ export function TopBar({
         </a>
 
         {/* Zone 2: Clean single-line text navigation links */}
-        <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
+        <nav className="hidden md:flex items-center gap-5 text-sm font-medium">
           <button
             type="button"
             onClick={() => onNavigate('monitor')}
@@ -112,7 +112,7 @@ export function TopBar({
         </nav>
 
         {/* Zone 3: Connection Health Badges */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex max-w-full flex-wrap items-center gap-2">
           <AlpacaHealthBadge
             status={alpacaStatus}
             isChecking={isCheckingAlpaca}
@@ -128,7 +128,7 @@ export function TopBar({
                 ? `Last error: ${health.lastError}`
                 : `Last checked: ${formatTimestamp(health?.checkedAt)}`
             }
-            className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-xs font-medium tabular-nums whitespace-nowrap shrink-0 transition-colors duration-150 cursor-pointer hover:brightness-110 disabled:opacity-60 ${statusToneClass}`}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-xs font-medium tabular-nums whitespace-nowrap shrink-0 transition-colors duration-150 cursor-pointer hover:brightness-110 disabled:opacity-60 ${statusToneClass}`}
           >
             <StatusIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <span>{statusLabel}</span>

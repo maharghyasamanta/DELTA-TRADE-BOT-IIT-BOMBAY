@@ -164,7 +164,12 @@ class DeltaStreamManager {
     this.reconnectAttempts = 0;
     if (this.ws) {
       this.ws.removeAllListeners();
-      this.ws.close();
+      this.ws.on('error', () => {});
+      if (this.ws.readyState === WebSocket.CONNECTING) {
+        this.ws.terminate();
+      } else {
+        this.ws.close();
+      }
       this.ws = null;
     }
     this.activeTickerSymbols.clear();

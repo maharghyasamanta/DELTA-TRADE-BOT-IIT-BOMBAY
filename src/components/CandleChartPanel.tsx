@@ -403,7 +403,7 @@ export function CandleChartPanel({
         <div ref={containerRef} className="h-full w-full" />
 
         {isLoading && candles.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B1120]/85 text-xs text-slate-300">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B1120]/85 text-xs text-slate-300">
             <div className="flex items-center gap-2 font-mono">
               <RefreshCw className="h-4 w-4 animate-spin text-sky-400" />
               <span>Fetching real historical candles from Delta Exchange India...</span>
@@ -412,7 +412,7 @@ export function CandleChartPanel({
         )}
 
         {!isLoading && error && candles.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B1120]/95 p-6">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B1120]/95 p-6">
             <div className="max-w-md rounded-md border border-rose-500/30 bg-rose-950/20 p-4 text-xs text-rose-200">
               <div className="flex items-start gap-2.5">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
@@ -436,7 +436,7 @@ export function CandleChartPanel({
         )}
 
         {!isLoading && !error && candles.length === 0 && symbol && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B1120]/90 p-6 text-center">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B1120]/90 p-6 text-center">
             <div className="max-w-md space-y-2 text-xs text-slate-300">
               <p className="font-medium text-slate-100">
                 No {basis === 'trade' ? 'traded' : 'mark'} candles returned by Delta Exchange India

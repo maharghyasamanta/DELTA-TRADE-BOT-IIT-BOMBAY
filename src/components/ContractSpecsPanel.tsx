@@ -67,7 +67,7 @@ export function ContractSpecsPanel({
           <SpecField
             label="Default Leverage"
             value={
-              product.defaultLeverage
+              product.defaultLeverage && Number.isFinite(Number(product.defaultLeverage))
                 ? `${Number(product.defaultLeverage)}x`
                 : '—'
             }
@@ -76,7 +76,7 @@ export function ContractSpecsPanel({
           <SpecField
             label="Maker Fee"
             value={
-              product.makerCommissionRate
+              product.makerCommissionRate && Number.isFinite(Number(product.makerCommissionRate))
                 ? `${(Number(product.makerCommissionRate) * 100).toFixed(3)}%`
                 : '—'
             }
@@ -85,7 +85,7 @@ export function ContractSpecsPanel({
           <SpecField
             label="Taker Fee"
             value={
-              product.takerCommissionRate
+              product.takerCommissionRate && Number.isFinite(Number(product.takerCommissionRate))
                 ? `${(Number(product.takerCommissionRate) * 100).toFixed(3)}%`
                 : '—'
             }

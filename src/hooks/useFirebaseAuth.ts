@@ -85,11 +85,16 @@ export function useFirebaseAuth() {
     }
   }, []);
 
+  const clearAuthError = useCallback(() => {
+    setAuthError(null);
+  }, []);
+
   return {
     user,
     authReady,
     isSigningIn,
     authError,
+    clearAuthError,
     signInWithGoogle,
     signOutUser,
     isFirebaseConfigured,

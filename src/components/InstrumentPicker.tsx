@@ -144,7 +144,7 @@ export function InstrumentPicker({
                     key={tab.id}
                     type="button"
                     onClick={() => setTypeFilter(tab.id)}
-                    className={`rounded px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors duration-150 cursor-pointer ${
+                    className={`rounded px-1.5 py-1.5 text-[11px] font-medium whitespace-nowrap transition-colors duration-150 cursor-pointer ${
                       active
                         ? 'bg-slate-800 text-slate-100'
                         : 'text-slate-400 hover:text-slate-200'
@@ -296,7 +296,7 @@ export function InstrumentPicker({
                         <span className="font-mono tabular-nums">
                           Strike {product.strikePrice}
                         </span>
-                      ) : product.defaultLeverage ? (
+                      ) : product.defaultLeverage && Number.isFinite(Number(product.defaultLeverage)) ? (
                         <span className="font-mono tabular-nums">
                           {Number(product.defaultLeverage)}x max
                         </span>

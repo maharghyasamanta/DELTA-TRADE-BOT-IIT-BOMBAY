@@ -157,7 +157,7 @@ export function LiveTickerStrip({
       </div>
 
       {/* Primary Metrics Grid (Flat hairline structure, no nested card boxes) */}
-      <div className="mt-3.5 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-3.5 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 2xl:grid-cols-6">
         <MetricItem
           label="Last Trade"
           value={formatPrice(ticker.close, tickSize)}

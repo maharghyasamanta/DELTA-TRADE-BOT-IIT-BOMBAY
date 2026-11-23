@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, X } from 'lucide-react';
 import { fetchAlpacaStatus } from './api/alpacaApi';
 import {
   fetchCandles,
@@ -297,7 +298,9 @@ export default function App() {
   const handleSelectSymbol = useCallback((symbol: string) => {
     setSelectedSymbol(symbol);
     setTicker(null);
+    setTickerError(null);
     setCandles([]);
+    setCandlesError(null);
     setLiveCandle(null);
     setBasis('trade');
   }, []);
@@ -346,13 +349,35 @@ export default function App() {
     };
   }, [selectedSymbol, resolution, lookbackId, basis, loadTicker, loadCandles]);
 
-  const handleNavigate = useCallback((section: 'monitor' | 'specs' | 'roadmap') => {
-    setActiveSection(section);
-    const el = document.getElementById(section);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const pendingSectionRef = useRef<'monitor' | 'specs' | 'roadmap' | null>(null);
+
+  const handleNavigate = useCallback(
+    (section: 'monitor' | 'specs' | 'roadmap') => {
+      setActiveSection(section);
+      if (section === 'specs' && dataSource !== 'delta') {
+        pendingSectionRef.current = 'specs';
+        setDataSource('delta');
+        return;
+      }
+      const el = document.getElementById(section);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    },
+    [dataSource],
+  );
+
+  useEffect(() => {
+    if (pendingSectionRef.current === 'specs' && dataSource === 'delta') {
+      pendingSectionRef.current = null;
+      requestAnimationFrame(() => {
+        const el = document.getElementById('specs');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
     }
-  }, []);
+  }, [dataSource]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0B1120] text-slate-100">
@@ -383,8 +408,34 @@ export default function App() {
 
       <main
         id="monitor"
-        className="mx-auto w-full max-w-[1600px] flex-1 px-6 py-5 space-y-5"
+        className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 space-y-5 sm:px-6"
       >
+        {firebaseAuth.authError && (
+          <div
+            role="alert"
+            className="flex items-start justify-between gap-3 rounded-lg border border-rose-500/35 bg-rose-950/25 px-4 py-3 text-xs text-rose-200"
+          >
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" aria-hidden="true" />
+              <div className="min-w-0 space-y-0.5">
+                <p className="font-medium text-rose-100">Google Sign-In Error</p>
+                <p className="break-words text-rose-300/90">{firebaseAuth.authError.message}</p>
+                <p className="font-mono text-[11px] text-rose-400/80 tabular-nums">
+                  At {formatTimestamp(firebaseAuth.authError.timestamp)}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={firebaseAuth.clearAuthError}
+              aria-label="Dismiss sign-in error"
+              className="rounded p-1 text-rose-300 hover:bg-rose-900/40 hover:text-rose-100 cursor-pointer shrink-0"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
           <InstrumentPicker
             dataSource={dataSource}
@@ -505,7 +556,10 @@ export default function App() {
                   source={alpacaBars.source}
                   fetchedAt={alpacaBars.fetchedAt}
                   feed={alpacaBars.feed}
-                  onRetry={alpacaBars.refetch}
+                  onRetry={() => {
+                    void loadAlpacaStatus();
+                    alpacaBars.refetch();
+                  }}
                   onSwitchToIex={() => setAlpacaFeed('iex')}
                   markers={dataSource === 'alpaca' ? regimeResult.markers : undefined}
                 />

@@ -19,9 +19,9 @@ export function PhaseRoadmapStrip({ firebaseConfigured = false }: PhaseRoadmapSt
     {
       phase: 'Phase 3',
       title: 'Guardrail Rules & Firestore Decision Log',
-      status: firebaseConfigured ? 'Active' : 'Setup Pending',
+      status: 'Setup Pending',
       detail: firebaseConfigured
-        ? 'Deterministic CONTINUE / REDUCE_SIZE / PAUSE + Google Sign-In log'
+        ? 'Firebase config & rules deployed; awaiting live Google Sign-In + Firestore write/list/delete test'
         : 'Rules live in UI; Google Sign-In & Firestore log await Firebase config',
     },
     {
@@ -49,7 +49,7 @@ export function PhaseRoadmapStrip({ firebaseConfigured = false }: PhaseRoadmapSt
           Build Delivery Phases
         </h2>
         <span className="text-[11px] text-slate-400">
-          Phases 1–2 active · Phase 3 guardrails active ({firebaseConfigured ? 'Firestore connected' : 'awaiting Firebase config'})
+          Phases 1–2 active · Phase 3 guardrails active ({firebaseConfigured ? 'Firebase provisioned · auth/log unverified' : 'awaiting Firebase config'})
         </span>
       </div>
 
