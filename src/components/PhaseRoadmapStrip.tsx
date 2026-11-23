@@ -1,12 +1,31 @@
 interface PhaseRoadmapStripProps {
   firebaseConfigured?: boolean;
+  isSignedIn?: boolean;
   geminiConfigured?: boolean | null;
+  geminiVerified?: boolean;
 }
 
 export function PhaseRoadmapStrip({
   firebaseConfigured = false,
+  isSignedIn = false,
   geminiConfigured = null,
+  geminiVerified = false,
 }: PhaseRoadmapStripProps) {
+  const phase3Status =
+    firebaseConfigured && isSignedIn
+      ? 'Active'
+      : firebaseConfigured
+        ? 'Ready'
+        : 'Setup Pending';
+  const phase4Status =
+    geminiConfigured === null
+      ? 'Checking'
+      : geminiConfigured && geminiVerified
+        ? 'Active'
+        : geminiConfigured
+          ? 'Ready'
+          : 'Setup Pending';
+
   const phases = [
     {
       phase: 'Phase 1',
@@ -23,19 +42,26 @@ export function PhaseRoadmapStrip({
     {
       phase: 'Phase 3',
       title: 'Guardrail Rules & Firestore Decision Log',
-      status: 'Setup Pending',
-      detail: firebaseConfigured
-        ? 'Firebase config & rules deployed; awaiting live Google Sign-In + Firestore write/list/delete test'
-        : 'Rules live in UI; Google Sign-In & Firestore log await Firebase config',
+      status: phase3Status,
+      detail:
+        firebaseConfigured && isSignedIn
+          ? 'Google Sign-In active; Firestore decision log ready for write/list/delete'
+          : firebaseConfigured
+            ? 'Firebase config & rules deployed; sign in with Google to persist decisions'
+            : 'Rules live in UI; Google Sign-In & Firestore log await Firebase config',
     },
     {
       phase: 'Phase 4',
       title: 'Gemini Structured Explanations',
-      status: 'Setup Pending',
+      status: phase4Status,
       detail:
-        geminiConfigured === false
-          ? 'Explain route & UI ready; awaiting GEMINI_API_KEY in server environment'
-          : 'Explain route & UI ready; awaiting live end-to-end Gemini response verification',
+        geminiConfigured === null
+          ? 'Checking server-side Gemini configuration...'
+          : geminiConfigured === false
+            ? 'Explain route & UI ready; awaiting GEMINI_API_KEY in server environment'
+            : geminiVerified
+              ? 'Server-side Gemini explanation verified with grounding guardrails'
+              : 'GEMINI_API_KEY configured; click "Explain these numbers" to run',
     },
     {
       phase: 'Phase 5',
@@ -56,13 +82,20 @@ export function PhaseRoadmapStrip({
           Build Delivery Phases
         </h2>
         <span className="text-[11px] text-slate-400">
-          Phases 1–2 active · Phase 3 guardrails active ({firebaseConfigured ? 'Firebase provisioned · auth/log unverified' : 'awaiting Firebase config'})
+          Phases 1–2 active · Phase 3 guardrails active (
+          {firebaseConfigured
+            ? isSignedIn
+              ? 'Firebase signed in'
+              : 'Firebase ready · sign in to log'
+            : 'awaiting Firebase config'}
+          )
         </span>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {phases.map((item) => {
           const isActive = item.status === 'Active';
+          const isReady = item.status === 'Ready';
           const isPending = item.status === 'Setup Pending';
           return (
             <div
@@ -75,9 +108,11 @@ export function PhaseRoadmapStrip({
                   className={
                     isActive
                       ? 'font-medium text-emerald-400'
-                      : isPending
-                        ? 'font-medium text-amber-300'
-                        : 'text-slate-500'
+                      : isReady
+                        ? 'font-medium text-sky-300'
+                        : isPending
+                          ? 'font-medium text-amber-300'
+                          : 'text-slate-500'
                   }
                 >
                   {item.status}

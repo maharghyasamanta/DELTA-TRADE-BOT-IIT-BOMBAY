@@ -14,9 +14,10 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? '';
 export const GEMINI_CONFIGURED = Boolean(GEMINI_API_KEY);
 
 export const GEMINI_MODEL = 'gemini-4-hydrogen';
+export const GEMINI_FALLBACK_MODEL = 'gemini-3.1-flash-lite';
 export const EXPLAIN_CACHE_TTL_MS = 60_000;
-export const EXPLAIN_TIMEOUT_MS = 20_000;
-export const EXPLAIN_MAX_ATTEMPTS = 2;
+export const EXPLAIN_TIMEOUT_MS = 15_000;
+export const EXPLAIN_MAX_ATTEMPTS = 1;
 export const EXPLAIN_MAX_RETRY_DELAY_MS = 60_000;
 const EXPLAIN_CACHE_MAX_ENTRIES = 100;
 
@@ -136,9 +137,15 @@ function clampSummary(raw: string): string {
 }
 
 function parseStructuredExplanation(rawText: string): ExplainStructuredOutput {
+  const cleanedText = rawText
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawText);
+    parsed = JSON.parse(cleanedText);
   } catch {
     throw new GeminiApiError(
       'Gemini returned non-JSON output for structured explanation',
@@ -339,132 +346,161 @@ export async function explainSnapshot(snapshot: ExplainSnapshotRequest): Promise
 
   const ai = getAiClient();
   let lastCaught: ReturnType<typeof extractErrorDetails> | null = null;
+  const attemptSummaries: Array<{ model: string; status: number; code: string; message: string }> = [];
+  const modelsToTry = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL] as const;
 
-  for (let attempt = 1; attempt <= EXPLAIN_MAX_ATTEMPTS; attempt += 1) {
-    try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: JSON.stringify(snapshot),
-        config: {
-          systemInstruction: EXPLAIN_SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          abortSignal: AbortSignal.timeout(EXPLAIN_TIMEOUT_MS),
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              summary: {
-                type: Type.STRING,
-                description:
-                  'Concise plain-language summary (max 400 characters) using ONLY numbers present in the input JSON.',
-              },
-              keyPoints: {
-                type: Type.ARRAY,
-                description: 'Up to 6 structured metric explanations grounded in the input JSON.',
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    label: { type: Type.STRING, description: 'Metric or rule name.' },
-                    valueText: {
-                      type: Type.STRING,
-                      description: 'Observed input value formatted cleanly (or "unavailable").',
+  for (const activeModel of modelsToTry) {
+    const thinkingLevel =
+      activeModel === GEMINI_FALLBACK_MODEL ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW;
+
+    for (let attempt = 1; attempt <= EXPLAIN_MAX_ATTEMPTS; attempt += 1) {
+      const startedAt = Date.now();
+      try {
+        const response = await ai.models.generateContent({
+          model: activeModel,
+          contents: JSON.stringify(snapshot),
+          config: {
+            systemInstruction: EXPLAIN_SYSTEM_INSTRUCTION,
+            responseMimeType: 'application/json',
+            thinkingConfig: { thinkingLevel },
+            abortSignal: AbortSignal.timeout(EXPLAIN_TIMEOUT_MS),
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                summary: {
+                  type: Type.STRING,
+                  description:
+                    'Concise plain-language summary (max 400 characters) using ONLY numbers present in the input JSON.',
+                },
+                keyPoints: {
+                  type: Type.ARRAY,
+                  description: 'Up to 6 structured metric explanations grounded in the input JSON.',
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      label: { type: Type.STRING, description: 'Metric or rule name.' },
+                      valueText: {
+                        type: Type.STRING,
+                        description: 'Observed input value formatted cleanly (or "unavailable").',
+                      },
+                      meaning: {
+                        type: Type.STRING,
+                        description: 'What this observed value describes without recommending actions.',
+                      },
                     },
-                    meaning: {
-                      type: Type.STRING,
-                      description: 'What this observed value describes without recommending actions.',
-                    },
+                    required: ['label', 'valueText', 'meaning'],
                   },
-                  required: ['label', 'valueText', 'meaning'],
+                },
+                cautions: {
+                  type: Type.ARRAY,
+                  description: 'Up to 3 descriptive data or threshold cautions (max 3 items).',
+                  items: { type: Type.STRING },
+                },
+                unavailable: {
+                  type: Type.ARRAY,
+                  description:
+                    'List any null/missing metrics explicitly noted as unavailable; empty array if all metrics exist.',
+                  items: { type: Type.STRING },
                 },
               },
-              cautions: {
-                type: Type.ARRAY,
-                description: 'Up to 3 descriptive data or threshold cautions (max 3 items).',
-                items: { type: Type.STRING },
-              },
-              unavailable: {
-                type: Type.ARRAY,
-                description:
-                  'List any null/missing metrics explicitly noted as unavailable; empty array if all metrics exist.',
-                items: { type: Type.STRING },
-              },
+              required: ['summary', 'keyPoints', 'cautions', 'unavailable'],
             },
-            required: ['summary', 'keyPoints', 'cautions', 'unavailable'],
           },
-        },
-      });
+        });
 
-      const rawText = (response.text ?? '').trim();
-      if (!rawText) {
-        throw new GeminiApiError(
-          'Gemini returned an empty structured explanation response',
-          502,
-          'GEMINI_EMPTY_RESPONSE',
+        const rawText = (response.text ?? '').trim();
+        if (!rawText) {
+          throw new GeminiApiError(
+            'Gemini returned an empty structured explanation response',
+            502,
+            'GEMINI_EMPTY_RESPONSE',
+          );
+        }
+
+        const explanation = parseStructuredExplanation(rawText);
+
+        // Server-side deterministic guard check BEFORE caching or returning
+        const guard = validateExplainOutput(explanation, snapshot);
+        if (!guard.ok) {
+          const guardErr = new GeminiApiError(
+            guard.message,
+            502,
+            guard.code,
+            guard.offendingNumbers,
+            guard.matchedWords,
+          );
+          lastError = guardErr.message;
+          throw guardErr;
+        }
+
+        const generatedAt = new Date().toISOString();
+        explainCache.set(cacheKey, {
+          explanation,
+          model: activeModel,
+          generatedAt,
+        });
+
+        lastSuccessAt = generatedAt;
+        lastError = null;
+
+        return {
+          explanation,
+          model: activeModel,
+          generatedAt,
+          cached: false,
+        };
+      } catch (err) {
+        if (err instanceof GeminiNotConfiguredError) {
+          throw err;
+        }
+        if (
+          err instanceof GeminiApiError &&
+          (err.code === 'UNGROUNDED_OUTPUT' ||
+            err.code === 'DISALLOWED_CONTENT' ||
+            err.code === 'GEMINI_INVALID_JSON' ||
+            err.code === 'GEMINI_INVALID_SCHEMA')
+        ) {
+          throw err;
+        }
+
+        const details = extractErrorDetails(err);
+        lastCaught = details;
+        const elapsedMs = Date.now() - startedAt;
+        attemptSummaries.push({
+          model: activeModel,
+          status: details.status,
+          code: details.code,
+          message: details.message,
+        });
+        console.warn(
+          `[GeminiClient] model=${activeModel} attempt=${attempt} elapsedMs=${elapsedMs} status=${details.status} code=${details.code} message=${details.message}`,
         );
+
+        if (!details.retryable) {
+          lastError = details.message;
+          throw new GeminiApiError(details.message, details.status, details.code);
+        }
+
+        if (attempt < EXPLAIN_MAX_ATTEMPTS) {
+          const waitMs = Math.min(
+            details.retryAfterMs ?? 600 * Math.pow(2, attempt - 1),
+            EXPLAIN_MAX_RETRY_DELAY_MS,
+          );
+          await sleep(waitMs);
+        }
       }
-
-      const explanation = parseStructuredExplanation(rawText);
-
-      // Server-side deterministic guard check BEFORE caching or returning
-      const guard = validateExplainOutput(explanation, snapshot);
-      if (!guard.ok) {
-        const guardErr = new GeminiApiError(
-          guard.message,
-          502,
-          guard.code,
-          guard.offendingNumbers,
-          guard.matchedWords,
-        );
-        lastError = guardErr.message;
-        throw guardErr;
-      }
-
-      const generatedAt = new Date().toISOString();
-      explainCache.set(cacheKey, {
-        explanation,
-        model: GEMINI_MODEL,
-        generatedAt,
-      });
-
-      lastSuccessAt = generatedAt;
-      lastError = null;
-
-      return {
-        explanation,
-        model: GEMINI_MODEL,
-        generatedAt,
-        cached: false,
-      };
-    } catch (err) {
-      if (err instanceof GeminiNotConfiguredError) {
-        throw err;
-      }
-      if (
-        err instanceof GeminiApiError &&
-        (err.code === 'UNGROUNDED_OUTPUT' ||
-          err.code === 'DISALLOWED_CONTENT' ||
-          err.code === 'GEMINI_INVALID_JSON' ||
-          err.code === 'GEMINI_INVALID_SCHEMA')
-      ) {
-        throw err;
-      }
-
-      const details = extractErrorDetails(err);
-      lastCaught = details;
-
-      if (!details.retryable || attempt >= EXPLAIN_MAX_ATTEMPTS) {
-        break;
-      }
-
-      const waitMs = Math.min(
-        details.retryAfterMs ?? 1_000 * Math.pow(2, attempt - 1),
-        EXPLAIN_MAX_RETRY_DELAY_MS,
-      );
-      await sleep(waitMs);
     }
   }
 
-  const finalMessage = lastCaught?.message ?? 'Unknown error calling Gemini API';
+  let finalMessage = lastCaught?.message ?? 'Unknown error calling Gemini API';
+  if (attemptSummaries.length > 1) {
+    const modelSummary = attemptSummaries
+      .map((item) => `${item.model} (HTTP ${item.status})`)
+      .join(', ');
+    finalMessage = `Tried ${modelSummary}: ${lastCaught?.message ?? 'upstream request failed'}`;
+  } else if (attemptSummaries.length === 1) {
+    finalMessage = `${attemptSummaries[0].model} (HTTP ${attemptSummaries[0].status}): ${attemptSummaries[0].message}`;
+  }
   lastError = finalMessage;
   throw new GeminiApiError(
     finalMessage,

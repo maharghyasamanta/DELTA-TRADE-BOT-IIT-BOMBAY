@@ -139,7 +139,10 @@ function logShapeOnce(label: string, sample: unknown): void {
   console.log(`[AlpacaClient] Inspected ${label} keys:`, keys);
 }
 
-function parseAlpacaErrorBody(rawText: string): { message?: string; alpacaCode?: number } {
+export function parseAlpacaErrorBody(
+  rawText: string,
+  status?: number,
+): { message?: string; alpacaCode?: number } {
   if (!rawText) return {};
   try {
     const parsed = JSON.parse(rawText) as { message?: unknown; error?: unknown; code?: unknown };
@@ -152,7 +155,26 @@ function parseAlpacaErrorBody(rawText: string): { message?: string; alpacaCode?:
     const alpacaCode = typeof parsed.code === 'number' ? parsed.code : undefined;
     return { message, alpacaCode };
   } catch {
-    return { message: rawText.slice(0, 240) };
+    const trimmed = rawText.trim();
+    if (/<(?:!doctype|html|head|body|title|h1)\b/i.test(trimmed)) {
+      const titleMatch = trimmed.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const h1Match = trimmed.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      const stripped = (titleMatch?.[1] || h1Match?.[1] || trimmed.replace(/<[^>]+>/g, ' '))
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (status === 401) {
+        return {
+          message: `${stripped || 'HTTP 401 Unauthorized'} — verify ALPACA_API_KEY_ID and ALPACA_API_SECRET_KEY are valid and active.`,
+        };
+      }
+      if (status === 403) {
+        return {
+          message: `${stripped || 'HTTP 403 Forbidden'} — check Alpaca API key permissions.`,
+        };
+      }
+      return { message: stripped.slice(0, 200) || undefined };
+    }
+    return { message: trimmed.slice(0, 240) };
   }
 }
 
@@ -195,7 +217,7 @@ async function fetchAlpacaJson<T>(path: string, shapePrefix: string): Promise<T>
         }
 
         const bodyText = await response.text().catch(() => '');
-        const { message, alpacaCode } = parseAlpacaErrorBody(bodyText);
+        const { message, alpacaCode } = parseAlpacaErrorBody(bodyText, response.status);
         throw new AlpacaApiError(
           message || `Alpaca Market Data rate limit reached (HTTP 429)`,
           429,
@@ -206,7 +228,7 @@ async function fetchAlpacaJson<T>(path: string, shapePrefix: string): Promise<T>
 
       if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
-        const { message, alpacaCode } = parseAlpacaErrorBody(bodyText);
+        const { message, alpacaCode } = parseAlpacaErrorBody(bodyText, response.status);
 
         if (response.status >= 500 && attempt < MAX_RETRY_ATTEMPTS) {
           await sleep(1000 * Math.pow(2, attempt - 1));

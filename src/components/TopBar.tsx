@@ -75,7 +75,10 @@ export function TopBar({
         </a>
 
         {/* Zone 2: Clean single-line text navigation links */}
-        <nav className="hidden md:flex items-center gap-5 text-sm font-medium">
+        <nav
+          aria-label="Primary sections"
+          className="order-3 flex w-full items-center gap-4 border-t border-slate-800/70 pt-2 text-xs font-medium md:order-none md:w-auto md:gap-5 md:border-t-0 md:pt-0 md:text-sm"
+        >
           <button
             type="button"
             onClick={() => onNavigate('monitor')}

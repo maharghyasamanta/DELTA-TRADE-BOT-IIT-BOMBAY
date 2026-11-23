@@ -171,6 +171,7 @@ export function AlpacaBarsChart({
   }, []);
 
   useEffect(() => {
+    setHoveredCandle(null);
     if (!candleSeriesRef.current || !volumeSeriesRef.current || !chartRef.current) {
       return;
     }

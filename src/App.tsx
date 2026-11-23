@@ -641,7 +641,9 @@ export default function App() {
 
         <PhaseRoadmapStrip
           firebaseConfigured={firebaseAuth.isFirebaseConfigured}
+          isSignedIn={Boolean(firebaseAuth.user)}
           geminiConfigured={explainStatus ? explainStatus.configured : null}
+          geminiVerified={Boolean(explainStatus?.lastSuccessAt)}
         />
       </main>
 

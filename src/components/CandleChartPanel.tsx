@@ -206,6 +206,7 @@ export function CandleChartPanel({
 
   // Populate historical candle series
   useEffect(() => {
+    setHoveredCandle(null);
     if (!candleSeriesRef.current || !volumeSeriesRef.current || !chartRef.current) {
       return;
     }
@@ -231,7 +232,7 @@ export function CandleChartPanel({
     if (candles.length > 0) {
       chartRef.current.timeScale().fitContent();
     }
-  }, [candles]);
+  }, [candles, symbol]);
 
   // Merge streaming WebSocket candle ticks
   useEffect(() => {

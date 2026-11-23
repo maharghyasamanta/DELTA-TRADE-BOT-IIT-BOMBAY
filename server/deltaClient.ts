@@ -101,8 +101,17 @@ async function fetchDeltaJson<T>(pathAndQuery: string): Promise<T> {
 
       if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
+        const cleanedBody = /<(?:!doctype|html|head|body|title|h1)\b/i.test(bodyText)
+          ? (
+              bodyText.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ||
+              bodyText.replace(/<[^>]+>/g, ' ')
+            )
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, 200)
+          : bodyText.slice(0, 240);
         throw new DeltaApiError(
-          `Delta Exchange returned HTTP ${response.status}: ${bodyText.slice(0, 240) || response.statusText}`,
+          `Delta Exchange returned HTTP ${response.status}: ${cleanedBody || response.statusText}`,
           response.status >= 400 && response.status < 500 ? response.status : 502,
           'DELTA_HTTP_ERROR',
         );
