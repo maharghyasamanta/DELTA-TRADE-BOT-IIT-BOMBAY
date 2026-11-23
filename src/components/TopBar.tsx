@@ -3,7 +3,10 @@ import { Activity, AlertTriangle, RefreshCw, WifiOff } from 'lucide-react';
 import type { AlpacaStatusResponse } from '../contracts/alpaca';
 import type { DeltaWsConnectionState, HealthStatusResponse } from '../contracts/delta';
 import { formatTimestamp } from '../utils/format';
-import { AlpacaHealthBadge } from './AlpacaHealthBadge';
+import {
+  AlpacaHealthBadge,
+  type AlpacaLiveErrorState,
+} from './AlpacaHealthBadge';
 
 interface TopBarProps {
   health: HealthStatusResponse | null;
@@ -13,6 +16,10 @@ interface TopBarProps {
   alpacaStatus: AlpacaStatusResponse | null;
   isCheckingAlpaca: boolean;
   alpacaStatusError: string | null;
+  alpacaLiveError?: AlpacaLiveErrorState | null;
+  alpacaLiveSuccessAt?: string | null;
+  alpacaNeedsSymbolHint?: boolean;
+  activeAlpacaSymbol?: string | null;
   onRefreshAlpacaStatus: () => void;
   activeSection: 'monitor' | 'specs' | 'roadmap';
   onNavigate: (section: 'monitor' | 'specs' | 'roadmap') => void;
@@ -27,6 +34,10 @@ export function TopBar({
   alpacaStatus,
   isCheckingAlpaca,
   alpacaStatusError,
+  alpacaLiveError = null,
+  alpacaLiveSuccessAt = null,
+  alpacaNeedsSymbolHint = false,
+  activeAlpacaSymbol = null,
   onRefreshAlpacaStatus,
   activeSection,
   onNavigate,
@@ -120,6 +131,10 @@ export function TopBar({
             status={alpacaStatus}
             isChecking={isCheckingAlpaca}
             fetchError={alpacaStatusError}
+            checkError={alpacaLiveError}
+            liveSuccessAt={alpacaLiveSuccessAt}
+            needsSymbolHint={alpacaNeedsSymbolHint}
+            activeSymbol={activeAlpacaSymbol}
             onRefresh={onRefreshAlpacaStatus}
           />
           <button

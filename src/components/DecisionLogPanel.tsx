@@ -149,6 +149,10 @@ export function DecisionLogPanel({
                 'Provide firebase-applet-config.json or VITE_FIREBASE_* variables and deploy firestore.rules to enable user decision logging.'}
             </p>
           </div>
+        ) : !authReady ? (
+          <div className="rounded-md border border-slate-800 bg-[#0B1120] p-4 font-mono text-xs text-slate-400">
+            Checking authentication status…
+          </div>
         ) : !user ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-800 bg-[#0B1120] p-4 text-xs text-slate-300">
             <span>

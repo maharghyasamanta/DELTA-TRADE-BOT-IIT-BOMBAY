@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, X } from 'lucide-react';
-import { fetchAlpacaStatus } from './api/alpacaApi';
+import {
+  fetchAlpacaLatestTrade,
+  fetchAlpacaStatus,
+  ProxyRequestError,
+} from './api/alpacaApi';
 import { fetchExplainStatus } from './api/explainApi';
 import {
   fetchCandles,
@@ -10,6 +14,7 @@ import {
   subscribeDeltaStream,
 } from './api/deltaApi';
 import { AlpacaBarsChart } from './components/AlpacaBarsChart';
+import type { AlpacaLiveErrorState } from './components/AlpacaHealthBadge';
 import { AlpacaQuotePanel } from './components/AlpacaQuotePanel';
 import { AuthStatusControl } from './components/AuthStatusControl';
 import {
@@ -67,6 +72,9 @@ export default function App() {
   const [alpacaStatus, setAlpacaStatus] = useState<AlpacaStatusResponse | null>(null);
   const [isCheckingAlpaca, setIsCheckingAlpaca] = useState(false);
   const [alpacaStatusError, setAlpacaStatusError] = useState<string | null>(null);
+  const [alpacaLiveError, setAlpacaLiveError] = useState<AlpacaLiveErrorState | null>(null);
+  const [alpacaLiveSuccessAt, setAlpacaLiveSuccessAt] = useState<string | null>(null);
+  const [alpacaBadgeHintNoSymbol, setAlpacaBadgeHintNoSymbol] = useState(false);
   const [alpacaSymbol, setAlpacaSymbol] = useState<string | null>(null);
   const [alpacaRecentSymbols, setAlpacaRecentSymbols] = useState<string[]>([]);
   const [alpacaTimeframe, setAlpacaTimeframe] = useState<AlpacaTimeframe>('1Day');
@@ -113,20 +121,82 @@ export default function App() {
     [products, selectedSymbol],
   );
 
-  const loadAlpacaStatus = useCallback(async () => {
-    setIsCheckingAlpaca(true);
+  const activeAlpacaSymbol = dataSource === 'alpaca' ? alpacaSymbol : null;
+
+  useEffect(() => {
+    if (activeAlpacaSymbol) {
+      setAlpacaBadgeHintNoSymbol(false);
+    }
+  }, [activeAlpacaSymbol]);
+
+  const syncAlpacaStatusOnly = useCallback(async (): Promise<AlpacaStatusResponse | null> => {
     try {
       const status = await fetchAlpacaStatus();
       setAlpacaStatus(status);
       setAlpacaStatusError(null);
+      return status;
     } catch (err) {
       setAlpacaStatusError(
         err instanceof Error ? err.message : 'Unable to reach /api/alpaca/status',
       );
+      return null;
+    }
+  }, []);
+
+  const loadAlpacaStatus = useCallback(async () => {
+    setIsCheckingAlpaca(true);
+    try {
+      const status = await syncAlpacaStatusOnly();
+      if (status && status.lastError === null && status.lastSuccessAt !== null) {
+        setAlpacaLiveError(null);
+      }
     } finally {
       setIsCheckingAlpaca(false);
     }
-  }, []);
+  }, [syncAlpacaStatusOnly]);
+
+  const handleCheckAlpacaBadge = useCallback(async () => {
+    if (alpacaStatus && !alpacaStatus.configured) {
+      await loadAlpacaStatus();
+      return;
+    }
+
+    if (!activeAlpacaSymbol) {
+      setAlpacaBadgeHintNoSymbol(true);
+      return;
+    }
+
+    setIsCheckingAlpaca(true);
+    setAlpacaBadgeHintNoSymbol(false);
+    setAlpacaLiveError(null);
+
+    try {
+      const env = await fetchAlpacaLatestTrade(activeAlpacaSymbol);
+      await syncAlpacaStatusOnly();
+      setAlpacaLiveError(null);
+      setAlpacaLiveSuccessAt(env.fetchedAt || new Date().toISOString());
+    } catch (err) {
+      const errState: AlpacaLiveErrorState =
+        err instanceof ProxyRequestError
+          ? {
+              status: err.status,
+              code: err.code,
+              message: err.message,
+              timestamp: err.timestamp,
+            }
+          : {
+              status: null,
+              code: null,
+              message: err instanceof Error ? err.message : 'Alpaca live check failed',
+              timestamp: new Date().toISOString(),
+            };
+      await syncAlpacaStatusOnly();
+      setAlpacaLiveSuccessAt(null);
+      setAlpacaLiveError(errState);
+    } finally {
+      setIsCheckingAlpaca(false);
+    }
+  }, [activeAlpacaSymbol, alpacaStatus, loadAlpacaStatus, syncAlpacaStatusOnly]);
 
   const loadExplainStatus = useCallback(async () => {
     try {
@@ -290,6 +360,9 @@ export default function App() {
 
   const handleSelectAlpacaSymbol = useCallback((symbol: string) => {
     setAlpacaSymbol(symbol);
+    setAlpacaBadgeHintNoSymbol(false);
+    setAlpacaLiveError(null);
+    setAlpacaLiveSuccessAt(null);
     setAlpacaRecentSymbols((prev) => (prev.includes(symbol) ? prev : [...prev, symbol]));
   }, []);
 
@@ -415,7 +488,11 @@ export default function App() {
         alpacaStatus={alpacaStatus}
         isCheckingAlpaca={isCheckingAlpaca}
         alpacaStatusError={alpacaStatusError}
-        onRefreshAlpacaStatus={() => void loadAlpacaStatus()}
+        alpacaLiveError={alpacaLiveError}
+        alpacaLiveSuccessAt={alpacaLiveSuccessAt}
+        alpacaNeedsSymbolHint={alpacaBadgeHintNoSymbol}
+        activeAlpacaSymbol={activeAlpacaSymbol}
+        onRefreshAlpacaStatus={() => void handleCheckAlpacaBadge()}
         activeSection={activeSection}
         onNavigate={handleNavigate}
         authSlot={
@@ -455,6 +532,12 @@ export default function App() {
                 <p className="break-words font-mono text-[11px] text-rose-200/95">
                   {firebaseAuth.authError.message}
                 </p>
+                {firebaseAuth.authError.isStorageBlocked && (
+                  <p className="break-words text-[11px] text-amber-200/95">
+                    Browser storage appears blocked inside this preview iframe — open the app in its
+                    own tab with the fullscreen button so Google sign-in persists across reloads.
+                  </p>
+                )}
                 {firebaseAuth.authError.code === 'auth/unauthorized-domain' &&
                   typeof window !== 'undefined' && (
                     <p className="break-words text-[11px] text-rose-300/90">
@@ -470,6 +553,46 @@ export default function App() {
               type="button"
               onClick={firebaseAuth.clearAuthError}
               aria-label="Dismiss sign-in error"
+              className="rounded p-1 text-rose-300 hover:bg-rose-900/40 hover:text-rose-100 cursor-pointer shrink-0"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        )}
+
+        {alpacaLiveError && (
+          <div
+            role="alert"
+            className="flex items-start justify-between gap-3 rounded-lg border border-rose-500/35 bg-rose-950/25 px-4 py-3 text-xs text-rose-200"
+          >
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" aria-hidden="true" />
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-rose-100">Alpaca Live Check Error</p>
+                  {alpacaLiveError.status !== null && (
+                    <span className="rounded border border-rose-500/40 bg-rose-950/60 px-1.5 py-0.5 font-mono text-[11px] text-rose-200">
+                      HTTP {alpacaLiveError.status}
+                    </span>
+                  )}
+                  {alpacaLiveError.code && (
+                    <span className="rounded border border-rose-500/30 bg-rose-950/40 px-1.5 py-0.5 font-mono text-[11px] text-rose-300">
+                      {alpacaLiveError.code}
+                    </span>
+                  )}
+                </div>
+                <p className="break-words font-mono text-[11px] text-rose-200/95">
+                  {alpacaLiveError.message}
+                </p>
+                <p className="font-mono text-[11px] text-rose-400/80 tabular-nums">
+                  At {formatTimestamp(alpacaLiveError.timestamp)}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAlpacaLiveError(null)}
+              aria-label="Dismiss Alpaca live check error"
               className="rounded p-1 text-rose-300 hover:bg-rose-900/40 hover:text-rose-100 cursor-pointer shrink-0"
             >
               <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -550,6 +673,7 @@ export default function App() {
                   timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
                   symbol={selectedSymbol}
                   user={firebaseAuth.user}
+                  authReady={firebaseAuth.authReady}
                   isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
                   onSignIn={() => void firebaseAuth.signInWithGoogle()}
                 />
@@ -634,6 +758,7 @@ export default function App() {
                   timeframeLabel={alpacaTimeframe}
                   symbol={alpacaSymbol}
                   user={firebaseAuth.user}
+                  authReady={firebaseAuth.authReady}
                   isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
                   onSignIn={() => void firebaseAuth.signInWithGoogle()}
                 />

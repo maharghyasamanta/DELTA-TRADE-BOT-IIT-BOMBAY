@@ -21,6 +21,7 @@ interface GuardrailPanelProps {
   timeframeLabel: string;
   symbol: string | null;
   user: User | null;
+  authReady?: boolean;
   isFirebaseConfigured: boolean;
   onSignIn: () => void;
 }
@@ -64,6 +65,7 @@ export function GuardrailPanel({
   timeframeLabel,
   symbol,
   user,
+  authReady = true,
   isFirebaseConfigured,
   onSignIn,
 }: GuardrailPanelProps) {
@@ -178,7 +180,11 @@ export function GuardrailPanel({
         </div>
 
         <div className="flex items-center gap-2">
-          {user && isFirebaseConfigured ? (
+          {!authReady && isFirebaseConfigured ? (
+            <span className="font-mono text-[11px] text-slate-400">
+              Checking auth…
+            </span>
+          ) : user && isFirebaseConfigured ? (
             <button
               type="button"
               onClick={() => void handleLogDecision()}
