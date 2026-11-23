@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchAlpacaStatus } from './api/alpacaApi';
 import {
   fetchCandles,
   fetchHealth,
@@ -6,15 +7,25 @@ import {
   fetchTicker,
   subscribeDeltaStream,
 } from './api/deltaApi';
+import { AlpacaBarsChart } from './components/AlpacaBarsChart';
+import { AlpacaQuotePanel } from './components/AlpacaQuotePanel';
 import {
   CandleChartPanel,
   LOOKBACK_OPTIONS,
 } from './components/CandleChartPanel';
 import { ContractSpecsPanel } from './components/ContractSpecsPanel';
-import { InstrumentPicker } from './components/InstrumentPicker';
+import {
+  InstrumentPicker,
+  type MarketDataSource,
+} from './components/InstrumentPicker';
 import { LiveTickerStrip } from './components/LiveTickerStrip';
 import { PhaseRoadmapStrip } from './components/PhaseRoadmapStrip';
 import { TopBar } from './components/TopBar';
+import type {
+  AlpacaFeed,
+  AlpacaStatusResponse,
+  AlpacaTimeframe,
+} from './contracts/alpaca';
 import type {
   CandlePriceBasis,
   CandleResolution,
@@ -24,6 +35,8 @@ import type {
   DeltaWsConnectionState,
   HealthStatusResponse,
 } from './contracts/delta';
+import { useAlpacaBars } from './hooks/useAlpacaBars';
+import { formatTimestamp } from './utils/format';
 
 interface ErrorState {
   message: string;
@@ -32,11 +45,21 @@ interface ErrorState {
 
 export default function App() {
   const [activeSection, setActiveSection] = useState<'monitor' | 'specs' | 'roadmap'>('monitor');
+  const [dataSource, setDataSource] = useState<MarketDataSource>('delta');
 
   // Health telemetry
   const [health, setHealth] = useState<HealthStatusResponse | null>(null);
   const [wsStateOverride, setWsStateOverride] = useState<DeltaWsConnectionState | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+
+  // Alpaca telemetry & state
+  const [alpacaStatus, setAlpacaStatus] = useState<AlpacaStatusResponse | null>(null);
+  const [isCheckingAlpaca, setIsCheckingAlpaca] = useState(false);
+  const [alpacaStatusError, setAlpacaStatusError] = useState<string | null>(null);
+  const [alpacaSymbol, setAlpacaSymbol] = useState<string | null>(null);
+  const [alpacaRecentSymbols, setAlpacaRecentSymbols] = useState<string[]>([]);
+  const [alpacaTimeframe, setAlpacaTimeframe] = useState<AlpacaTimeframe>('1Day');
+  const [alpacaFeed, setAlpacaFeed] = useState<AlpacaFeed | undefined>(undefined);
 
   // Live products catalog
   const [products, setProducts] = useState<DeltaProductSummary[]>([]);
@@ -72,6 +95,21 @@ export default function App() {
     () => products.find((p) => p.symbol === selectedSymbol) ?? null,
     [products, selectedSymbol],
   );
+
+  const loadAlpacaStatus = useCallback(async () => {
+    setIsCheckingAlpaca(true);
+    try {
+      const status = await fetchAlpacaStatus();
+      setAlpacaStatus(status);
+      setAlpacaStatusError(null);
+    } catch (err) {
+      setAlpacaStatusError(
+        err instanceof Error ? err.message : 'Unable to reach /api/alpaca/status',
+      );
+    } finally {
+      setIsCheckingAlpaca(false);
+    }
+  }, []);
 
   const loadHealth = useCallback(async () => {
     setIsCheckingHealth(true);
@@ -197,15 +235,38 @@ export default function App() {
     [],
   );
 
-  // Initial load + 30s health polling
+  // Initial load + 30s health polling (Delta + Alpaca)
   useEffect(() => {
     void loadHealth();
+    void loadAlpacaStatus();
     void loadProducts();
     const timer = setInterval(() => {
       void loadHealth();
+      void loadAlpacaStatus();
     }, 30_000);
     return () => clearInterval(timer);
-  }, [loadHealth, loadProducts]);
+  }, [loadHealth, loadAlpacaStatus, loadProducts]);
+
+  const handleChangeDataSource = useCallback(
+    (nextSource: MarketDataSource) => {
+      setDataSource(nextSource);
+      void loadAlpacaStatus();
+    },
+    [loadAlpacaStatus],
+  );
+
+  const handleSelectAlpacaSymbol = useCallback((symbol: string) => {
+    setAlpacaSymbol(symbol);
+    setAlpacaRecentSymbols((prev) => (prev.includes(symbol) ? prev : [...prev, symbol]));
+  }, []);
+
+  const alpacaBars = useAlpacaBars({
+    symbol: dataSource === 'alpaca' ? alpacaSymbol : null,
+    timeframe: alpacaTimeframe,
+    feed: alpacaFeed,
+    configured: alpacaStatus ? alpacaStatus.configured : null,
+    onAfterRequest: loadAlpacaStatus,
+  });
 
   // Reset ticker and candles cleanly when switching instrument
   const handleSelectSymbol = useCallback((symbol: string) => {
@@ -275,6 +336,10 @@ export default function App() {
         wsStateOverride={wsStateOverride}
         isCheckingHealth={isCheckingHealth}
         onRefreshHealth={() => void loadHealth()}
+        alpacaStatus={alpacaStatus}
+        isCheckingAlpaca={isCheckingAlpaca}
+        alpacaStatusError={alpacaStatusError}
+        onRefreshAlpacaStatus={() => void loadAlpacaStatus()}
         activeSection={activeSection}
         onNavigate={handleNavigate}
       />
@@ -285,6 +350,8 @@ export default function App() {
       >
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
           <InstrumentPicker
+            dataSource={dataSource}
+            onChangeDataSource={handleChangeDataSource}
             products={products}
             underlyings={underlyings}
             selectedSymbol={selectedSymbol}
@@ -294,51 +361,110 @@ export default function App() {
             source={productsSource}
             fetchedAt={productsFetchedAt}
             onRetry={() => void loadProducts()}
+            alpacaSelectedSymbol={alpacaSymbol}
+            alpacaRecentSymbols={alpacaRecentSymbols}
+            alpacaConfigured={alpacaStatus ? alpacaStatus.configured : null}
+            alpacaCheckedAt={alpacaStatus?.checkedAt ?? null}
+            onSelectAlpacaSymbol={handleSelectAlpacaSymbol}
+            onAfterAlpacaValidate={loadAlpacaStatus}
           />
 
           <div className="min-w-0 space-y-5">
-            <LiveTickerStrip
-              symbol={selectedSymbol}
-              ticker={ticker}
-              isLoading={tickerLoading}
-              error={tickerError}
-              source={tickerSource}
-              lastUpdated={tickerUpdatedAt}
-              onRefresh={() => {
-                if (selectedSymbol) void loadTicker(selectedSymbol);
-              }}
-            />
+            {dataSource === 'delta' ? (
+              <>
+                <LiveTickerStrip
+                  symbol={selectedSymbol}
+                  ticker={ticker}
+                  isLoading={tickerLoading}
+                  error={tickerError}
+                  source={tickerSource}
+                  lastUpdated={tickerUpdatedAt}
+                  onRefresh={() => {
+                    if (selectedSymbol) void loadTicker(selectedSymbol);
+                  }}
+                />
 
-            <CandleChartPanel
-              symbol={selectedSymbol}
-              tickSize={selectedProduct?.tickSize ?? ticker?.tickSize ?? null}
-              resolution={resolution}
-              onChangeResolution={setResolution}
-              lookbackId={lookbackId}
-              onChangeLookback={setLookbackId}
-              basis={basis}
-              onChangeBasis={setBasis}
-              candles={candles}
-              liveCandle={liveCandle}
-              isLoading={candlesLoading}
-              error={candlesError}
-              source={candlesSource}
-              fetchedAt={candlesFetchedAt}
-              querySymbol={candlesQuerySymbol}
-              onRetry={() => {
-                if (selectedSymbol) {
-                  void loadCandles(selectedSymbol, resolution, lookbackId, basis);
-                }
-              }}
-            />
+                <CandleChartPanel
+                  symbol={selectedSymbol}
+                  tickSize={selectedProduct?.tickSize ?? ticker?.tickSize ?? null}
+                  resolution={resolution}
+                  onChangeResolution={setResolution}
+                  lookbackId={lookbackId}
+                  onChangeLookback={setLookbackId}
+                  basis={basis}
+                  onChangeBasis={setBasis}
+                  candles={candles}
+                  liveCandle={liveCandle}
+                  isLoading={candlesLoading}
+                  error={candlesError}
+                  source={candlesSource}
+                  fetchedAt={candlesFetchedAt}
+                  querySymbol={candlesQuerySymbol}
+                  onRetry={() => {
+                    if (selectedSymbol) {
+                      void loadCandles(selectedSymbol, resolution, lookbackId, basis);
+                    }
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                {alpacaSymbol && (
+                  <AlpacaQuotePanel
+                    symbol={alpacaSymbol}
+                    configured={alpacaStatus ? alpacaStatus.configured : null}
+                    onAfterRequest={loadAlpacaStatus}
+                  />
+                )}
+
+                {alpacaSymbol &&
+                  !alpacaBars.isLoading &&
+                  !alpacaBars.error &&
+                  alpacaBars.candles.length === 0 && (
+                    <div
+                      role="status"
+                      className="rounded-lg border border-slate-800/90 bg-[#111A2E] px-5 py-3 text-xs text-slate-300"
+                    >
+                      <span>
+                        Alpaca returned 0 bars for {alpacaSymbol}, {alpacaTimeframe}, and{' '}
+                        {alpacaFeed ?? 'plan default'}
+                      </span>
+                      <span aria-hidden="true"> · </span>
+                      <span className="font-mono text-slate-400 tabular-nums">
+                        At {formatTimestamp(alpacaBars.fetchedAt)}
+                      </span>
+                      <span className="text-slate-400">
+                        {' '}
+                        (the market may be closed or the window empty)
+                      </span>
+                    </div>
+                  )}
+
+                <AlpacaBarsChart
+                  symbol={alpacaSymbol}
+                  timeframe={alpacaTimeframe}
+                  onChangeTimeframe={setAlpacaTimeframe}
+                  candles={alpacaBars.candles}
+                  isLoading={alpacaBars.isLoading}
+                  error={alpacaBars.error}
+                  source={alpacaBars.source}
+                  fetchedAt={alpacaBars.fetchedAt}
+                  feed={alpacaBars.feed}
+                  onRetry={alpacaBars.refetch}
+                  onSwitchToIex={() => setAlpacaFeed('iex')}
+                />
+              </>
+            )}
           </div>
         </div>
 
-        <ContractSpecsPanel
-          product={selectedProduct}
-          source={productsSource}
-          fetchedAt={productsFetchedAt}
-        />
+        {dataSource === 'delta' && (
+          <ContractSpecsPanel
+            product={selectedProduct}
+            source={productsSource}
+            fetchedAt={productsFetchedAt}
+          />
+        )}
 
         <PhaseRoadmapStrip />
       </main>
@@ -347,7 +473,9 @@ export default function App() {
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
           <span>Read-only. Not financial advice.</span>
           <span className="font-mono text-[11px] text-slate-500">
-            Data proxied server-side from api.india.delta.exchange (public market data only)
+            {dataSource === 'alpaca'
+              ? 'Data proxied server-side from data.alpaca.markets (public market data only)'
+              : 'Data proxied server-side from api.india.delta.exchange (public market data only)'}
           </span>
         </div>
       </footer>

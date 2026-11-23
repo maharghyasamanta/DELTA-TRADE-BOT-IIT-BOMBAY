@@ -278,13 +278,13 @@ export function AlpacaBarsChart({
         <div ref={containerRef} className="h-full w-full" />
 
         {!symbol && !error && !isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B1120]/95 p-6 text-center text-xs text-slate-400">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B1120]/95 p-6 text-center text-xs text-slate-400">
             Select a symbol to view Alpaca data
           </div>
         )}
 
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B1120]/85 text-xs text-slate-300">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B1120]/85 text-xs text-slate-300">
             <div className="flex items-center gap-2 font-mono">
               <RefreshCw className="h-4 w-4 animate-spin text-sky-400" />
               <span>Fetching real historical bars from Alpaca Market Data...</span>
@@ -293,7 +293,7 @@ export function AlpacaBarsChart({
         )}
 
         {!isLoading && error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B1120]/95 p-6">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B1120]/95 p-6">
             <div className="max-w-md rounded-md border border-rose-500/30 bg-rose-950/20 p-4 text-xs text-rose-200">
               <div className="flex items-start gap-2.5">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
@@ -328,7 +328,7 @@ export function AlpacaBarsChart({
         )}
 
         {!isLoading && !error && candles.length === 0 && symbol && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[#0B1120]/90 p-6 text-center">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0B1120]/90 p-6 text-center">
             <div className="max-w-md space-y-2 text-xs text-slate-300">
               <p className="font-medium text-slate-100">No bars returned by Alpaca Market Data</p>
               <p className="text-slate-400">

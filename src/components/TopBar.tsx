@@ -1,12 +1,18 @@
 import { Activity, AlertTriangle, RefreshCw, WifiOff } from 'lucide-react';
+import type { AlpacaStatusResponse } from '../contracts/alpaca';
 import type { DeltaWsConnectionState, HealthStatusResponse } from '../contracts/delta';
 import { formatTimestamp } from '../utils/format';
+import { AlpacaHealthBadge } from './AlpacaHealthBadge';
 
 interface TopBarProps {
   health: HealthStatusResponse | null;
   wsStateOverride: DeltaWsConnectionState | null;
   isCheckingHealth: boolean;
   onRefreshHealth: () => void;
+  alpacaStatus: AlpacaStatusResponse | null;
+  isCheckingAlpaca: boolean;
+  alpacaStatusError: string | null;
+  onRefreshAlpacaStatus: () => void;
   activeSection: 'monitor' | 'specs' | 'roadmap';
   onNavigate: (section: 'monitor' | 'specs' | 'roadmap') => void;
 }
@@ -16,6 +22,10 @@ export function TopBar({
   wsStateOverride,
   isCheckingHealth,
   onRefreshHealth,
+  alpacaStatus,
+  isCheckingAlpaca,
+  alpacaStatusError,
+  onRefreshAlpacaStatus,
   activeSection,
   onNavigate,
 }: TopBarProps) {
@@ -98,8 +108,14 @@ export function TopBar({
           </button>
         </nav>
 
-        {/* Zone 3: Single Primary Action / Connection Health */}
-        <div className="flex items-center shrink-0">
+        {/* Zone 3: Connection Health Badges */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <AlpacaHealthBadge
+            status={alpacaStatus}
+            isChecking={isCheckingAlpaca}
+            fetchError={alpacaStatusError}
+            onRefresh={onRefreshAlpacaStatus}
+          />
           <button
             type="button"
             onClick={onRefreshHealth}
