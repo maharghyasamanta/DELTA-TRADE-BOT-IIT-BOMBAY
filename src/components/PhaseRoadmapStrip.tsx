@@ -43,7 +43,7 @@ export function PhaseRoadmapStrip({
         ? 'Guardrail rules live; Firestore log blocked: missing Firebase config'
         : isSignedIn
           ? 'Guardrail rules live & Google Sign-In active; log/list/delete ready for live test'
-          : 'Guardrails live in UI; Firestore log blocked by auth/unauthorized-domain (add host in Firebase Auth Authorized Domains)',
+          : 'Guardrails live in UI; sign in with Google to verify Firestore decision log live',
     },
     {
       phase: 'Phase 4',
@@ -81,7 +81,7 @@ export function PhaseRoadmapStrip({
           {firebaseConfigured
             ? isSignedIn
               ? 'signed in (ready for Firestore test)'
-              : 'setup pending (auth/unauthorized-domain)'
+              : 'awaiting sign-in for Firestore test'
             : 'setup pending (missing Firebase config)'}{' '}
           · Phase 4 {geminiVerified ? 'active' : 'setup pending'}
         </span>

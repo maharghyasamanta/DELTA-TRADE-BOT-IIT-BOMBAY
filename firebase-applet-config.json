@@ -1,12 +1,12 @@
 {
-  "projectId": "sapient-quill-7vc14",
-  "appId": "1:276438404041:web:d2cbbeffa2248c8ea87618",
-  "apiKey": "AIzaSyCe4HFgDUsoL7GXTdHQvcetKDDhHGG4Q4M",
-  "authDomain": "sapient-quill-7vc14.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-deltatradebotiit-98a3c706-c8c6-4342-8fc7-8111b4428b2e",
-  "storageBucket": "sapient-quill-7vc14.firebasestorage.app",
-  "messagingSenderId": "276438404041",
+  "projectId": "gen-lang-client-0130590698",
+  "appId": "1:617375768312:web:7ac24abe95f0d309f9e50d",
+  "apiKey": "AIzaSyB7DvoCSWO2rqls2UgLjBMAy4K-tcFx6jM",
+  "authDomain": "gen-lang-client-0130590698.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-deltatradebotiit-add43f67-32e1-4764-933a-51ce2781a444",
+  "storageBucket": "gen-lang-client-0130590698.firebasestorage.app",
+  "messagingSenderId": "617375768312",
   "measurementId": "",
-  "oAuthClientId": "276438404041-5artd067nr0ju065nerrd992tu1b74jq.apps.googleusercontent.com",
+  "oAuthClientId": "617375768312-nq2iq1bmkp0hkcgi6ik7g46vl7n1t9m0.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }
