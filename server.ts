@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { createDeltaRouter } from './server/routes/delta.ts';
+import { createAlpacaRouter } from './server/routes/alpaca.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +25,7 @@ async function startServer(): Promise<void> {
 
   // Public read-only Delta Exchange India proxy routes
   app.use('/api', createDeltaRouter());
+  app.use('/api', createAlpacaRouter());
 
   if (isProd) {
     const distDir = path.resolve(__dirname, 'dist');
