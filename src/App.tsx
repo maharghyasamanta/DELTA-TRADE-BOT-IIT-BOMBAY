@@ -9,11 +9,14 @@ import {
 } from './api/deltaApi';
 import { AlpacaBarsChart } from './components/AlpacaBarsChart';
 import { AlpacaQuotePanel } from './components/AlpacaQuotePanel';
+import { AuthStatusControl } from './components/AuthStatusControl';
 import {
   CandleChartPanel,
   LOOKBACK_OPTIONS,
 } from './components/CandleChartPanel';
 import { ContractSpecsPanel } from './components/ContractSpecsPanel';
+import { DecisionLogPanel } from './components/DecisionLogPanel';
+import { GuardrailPanel } from './components/GuardrailPanel';
 import {
   InstrumentPicker,
   type MarketDataSource,
@@ -37,6 +40,7 @@ import type {
   HealthStatusResponse,
 } from './contracts/delta';
 import { useAlpacaBars } from './hooks/useAlpacaBars';
+import { useFirebaseAuth } from './hooks/useFirebaseAuth';
 import { useRegimeSeries } from './hooks/useRegimeSeries';
 import { formatTimestamp } from './utils/format';
 
@@ -287,6 +291,7 @@ export default function App() {
   );
 
   const regimeResult = useRegimeSeries(activeCandles);
+  const firebaseAuth = useFirebaseAuth();
 
   // Reset ticker and candles cleanly when switching instrument
   const handleSelectSymbol = useCallback((symbol: string) => {
@@ -362,6 +367,18 @@ export default function App() {
         onRefreshAlpacaStatus={() => void loadAlpacaStatus()}
         activeSection={activeSection}
         onNavigate={handleNavigate}
+        authSlot={
+          <AuthStatusControl
+            user={firebaseAuth.user}
+            authReady={firebaseAuth.authReady}
+            isSigningIn={firebaseAuth.isSigningIn}
+            authError={firebaseAuth.authError}
+            isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+            firebaseConfigError={firebaseAuth.firebaseConfigError}
+            onSignIn={() => void firebaseAuth.signInWithGoogle()}
+            onSignOut={() => void firebaseAuth.signOutUser()}
+          />
+        }
       />
 
       <main
@@ -434,6 +451,16 @@ export default function App() {
                   timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
                   symbol={selectedSymbol}
                 />
+
+                <GuardrailPanel
+                  regimeResult={regimeResult}
+                  sourceLabel="Delta"
+                  timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
+                  symbol={selectedSymbol}
+                  user={firebaseAuth.user}
+                  isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+                  onSignIn={() => void firebaseAuth.signInWithGoogle()}
+                />
               </>
             ) : (
               <>
@@ -489,6 +516,16 @@ export default function App() {
                   timeframeLabel={alpacaTimeframe}
                   symbol={alpacaSymbol}
                 />
+
+                <GuardrailPanel
+                  regimeResult={regimeResult}
+                  sourceLabel="Alpaca"
+                  timeframeLabel={alpacaTimeframe}
+                  symbol={alpacaSymbol}
+                  user={firebaseAuth.user}
+                  isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+                  onSignIn={() => void firebaseAuth.signInWithGoogle()}
+                />
               </>
             )}
           </div>
@@ -502,7 +539,15 @@ export default function App() {
           />
         )}
 
-        <PhaseRoadmapStrip />
+        <DecisionLogPanel
+          user={firebaseAuth.user}
+          authReady={firebaseAuth.authReady}
+          isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+          firebaseConfigError={firebaseAuth.firebaseConfigError}
+          onSignIn={() => void firebaseAuth.signInWithGoogle()}
+        />
+
+        <PhaseRoadmapStrip firebaseConfigured={firebaseAuth.isFirebaseConfigured} />
       </main>
 
       <footer className="border-t border-slate-800/80 bg-[#0B1120] px-6 py-4">

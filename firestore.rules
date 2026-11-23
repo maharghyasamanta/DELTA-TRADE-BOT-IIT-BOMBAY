@@ -1,0 +1,150 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedOwner(uid) {
+      return isSignedIn()
+        && request.auth.uid == uid
+        && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string
+        && id.size() >= 1
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isNum(val) {
+      return val is int || val is float;
+    }
+
+    function isNullableNum(val) {
+      return val == null || isNum(val);
+    }
+
+    function isValidInputsMap(inputs) {
+      return inputs is map
+        && inputs.keys().hasAll([
+          'score',
+          'volZ',
+          'trend',
+          'changePointsInWindow',
+          'lastChangePointAgeBars'
+        ])
+        && inputs.keys().hasOnly([
+          'score',
+          'volZ',
+          'trend',
+          'changePointsInWindow',
+          'lastChangePointAgeBars'
+        ])
+        && isNullableNum(inputs.score)
+        && isNullableNum(inputs.volZ)
+        && isNullableNum(inputs.trend)
+        && isNum(inputs.changePointsInWindow)
+        && inputs.changePointsInWindow >= 0
+        && isNullableNum(inputs.lastChangePointAgeBars);
+    }
+
+    function isValidThresholdsMap(t) {
+      return t is map
+        && t.keys().hasAll([
+          'pauseScore',
+          'pauseVolZ',
+          'pauseChangePointAgeBars',
+          'reduceScore',
+          'reduceVolZ',
+          'reduceChangePointAgeBars'
+        ])
+        && t.keys().hasOnly([
+          'pauseScore',
+          'pauseVolZ',
+          'pauseChangePointAgeBars',
+          'reduceScore',
+          'reduceVolZ',
+          'reduceChangePointAgeBars'
+        ])
+        && isNum(t.pauseScore)
+        && isNum(t.pauseVolZ)
+        && isNum(t.pauseChangePointAgeBars)
+        && isNum(t.reduceScore)
+        && isNum(t.reduceVolZ)
+        && isNum(t.reduceChangePointAgeBars);
+    }
+
+    function isValidDecisionEntry(data) {
+      return data.keys().hasAll([
+          'timestamp',
+          'source',
+          'symbol',
+          'timeframe',
+          'decision',
+          'firedRules',
+          'reasons',
+          'inputs',
+          'thresholdsUsed',
+          'lastCandleTime',
+          'candleCount'
+        ])
+        && data.keys().hasOnly([
+          'timestamp',
+          'source',
+          'symbol',
+          'timeframe',
+          'decision',
+          'firedRules',
+          'reasons',
+          'inputs',
+          'thresholdsUsed',
+          'lastCandleTime',
+          'candleCount'
+        ])
+        && data.timestamp == request.time
+        && data.source in ['Delta', 'Alpaca']
+        && data.symbol is string
+        && data.symbol.size() >= 1
+        && data.symbol.size() <= 40
+        && data.timeframe is string
+        && data.timeframe.size() >= 1
+        && data.timeframe.size() <= 40
+        && data.decision in ['CONTINUE', 'REDUCE_SIZE', 'PAUSE', 'NO_DECISION']
+        && data.firedRules is list
+        && data.firedRules.size() >= 1
+        && data.firedRules.size() <= 16
+        && data.firedRules[0] is string
+        && data.firedRules[0].size() <= 64
+        && data.reasons is list
+        && data.reasons.size() >= 1
+        && data.reasons.size() <= 16
+        && data.reasons[0] is string
+        && data.reasons[0].size() <= 300
+        && isValidInputsMap(data.inputs)
+        && isValidThresholdsMap(data.thresholdsUsed)
+        && isNullableNum(data.lastCandleTime)
+        && isNum(data.candleCount)
+        && data.candleCount >= 0;
+    }
+
+    match /users/{uid}/decisions/{docId} {
+      allow get: if isVerifiedOwner(uid) && isValidId(docId);
+      allow list: if isVerifiedOwner(uid);
+      allow create: if isVerifiedOwner(uid) && isValidId(docId) && isValidDecisionEntry(incoming());
+      allow update: if false;
+      allow delete: if isVerifiedOwner(uid) && isValidId(docId);
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Activity, AlertTriangle, RefreshCw, WifiOff } from 'lucide-react';
 import type { AlpacaStatusResponse } from '../contracts/alpaca';
 import type { DeltaWsConnectionState, HealthStatusResponse } from '../contracts/delta';
@@ -15,6 +16,7 @@ interface TopBarProps {
   onRefreshAlpacaStatus: () => void;
   activeSection: 'monitor' | 'specs' | 'roadmap';
   onNavigate: (section: 'monitor' | 'specs' | 'roadmap') => void;
+  authSlot?: ReactNode;
 }
 
 export function TopBar({
@@ -28,6 +30,7 @@ export function TopBar({
   onRefreshAlpacaStatus,
   activeSection,
   onNavigate,
+  authSlot,
 }: TopBarProps) {
   const wsState = wsStateOverride ?? health?.deltaWsState ?? 'disconnected';
   const restOk = health?.deltaRestOk ?? false;
@@ -134,6 +137,7 @@ export function TopBar({
               aria-hidden="true"
             />
           </button>
+          {authSlot}
         </div>
       </div>
     </header>

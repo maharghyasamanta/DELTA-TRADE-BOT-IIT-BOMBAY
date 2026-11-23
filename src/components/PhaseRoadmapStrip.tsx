@@ -1,37 +1,43 @@
-const PHASES = [
-  {
-    phase: 'Phase 1',
-    title: 'Delta Proxy, Picker, Live Ticker & Candle Chart',
-    status: 'Active',
-    detail: 'Live REST proxy + server WebSocket SSE stream + Lightweight Charts',
-  },
-  {
-    phase: 'Phase 2',
-    title: 'Regime Engine & Chart Markers',
-    status: 'Next',
-    detail: 'Vol z-score, trend strength, CUSUM change-point, 0–100 score',
-  },
-  {
-    phase: 'Phase 3',
-    title: 'Guardrail Rules & Firestore Decision Log',
-    status: 'Planned',
-    detail: 'Deterministic CONTINUE / REDUCE SIZE / PAUSE + Google Sign-In log',
-  },
-  {
-    phase: 'Phase 4',
-    title: 'Gemini Structured Explanations',
-    status: 'Planned',
-    detail: 'Server-side JSON explanations grounded strictly in computed metrics',
-  },
-  {
-    phase: 'Phase 5',
-    title: 'Detector Evaluation Panel',
-    status: 'Planned',
-    detail: 'Historical spike lead-time & false-alarm audit on real candles',
-  },
-] as const;
+interface PhaseRoadmapStripProps {
+  firebaseConfigured?: boolean;
+}
 
-export function PhaseRoadmapStrip() {
+export function PhaseRoadmapStrip({ firebaseConfigured = false }: PhaseRoadmapStripProps) {
+  const phases = [
+    {
+      phase: 'Phase 1',
+      title: 'Delta Proxy, Picker, Live Ticker & Candle Chart',
+      status: 'Active',
+      detail: 'Live REST proxy + server WebSocket SSE stream + Lightweight Charts',
+    },
+    {
+      phase: 'Phase 2',
+      title: 'Regime Engine & Chart Markers',
+      status: 'Active',
+      detail: 'Vol z-score, trend strength, CUSUM change-point, 0–100 score',
+    },
+    {
+      phase: 'Phase 3',
+      title: 'Guardrail Rules & Firestore Decision Log',
+      status: firebaseConfigured ? 'Active' : 'Setup Pending',
+      detail: firebaseConfigured
+        ? 'Deterministic CONTINUE / REDUCE_SIZE / PAUSE + Google Sign-In log'
+        : 'Rules live in UI; Google Sign-In & Firestore log await Firebase config',
+    },
+    {
+      phase: 'Phase 4',
+      title: 'Gemini Structured Explanations',
+      status: 'Planned',
+      detail: 'Server-side JSON explanations grounded strictly in computed metrics',
+    },
+    {
+      phase: 'Phase 5',
+      title: 'Detector Evaluation Panel',
+      status: 'Planned',
+      detail: 'Historical spike lead-time & false-alarm audit on real candles',
+    },
+  ] as const;
+
   return (
     <section
       id="roadmap"
@@ -43,13 +49,14 @@ export function PhaseRoadmapStrip() {
           Build Delivery Phases
         </h2>
         <span className="text-[11px] text-slate-400">
-          Phase 1 live for market-data testing before Phase 2 regime indicators
+          Phases 1–2 active · Phase 3 guardrails active ({firebaseConfigured ? 'Firestore connected' : 'awaiting Firebase config'})
         </span>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {PHASES.map((item) => {
+        {phases.map((item) => {
           const isActive = item.status === 'Active';
+          const isPending = item.status === 'Setup Pending';
           return (
             <div
               key={item.phase}
@@ -61,7 +68,9 @@ export function PhaseRoadmapStrip() {
                   className={
                     isActive
                       ? 'font-medium text-emerald-400'
-                      : 'text-slate-500'
+                      : isPending
+                        ? 'font-medium text-amber-300'
+                        : 'text-slate-500'
                   }
                 >
                   {item.status}

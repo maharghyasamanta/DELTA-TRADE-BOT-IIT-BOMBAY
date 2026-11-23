@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "DecisionLogEntry": {
+      "title": "DecisionLogEntry",
+      "description": "Advisory guardrail evaluation entry logged by an authenticated user for a specific market data window.",
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Firestore server timestamp recorded at write time."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["Delta", "Alpaca"],
+          "description": "Market data source used for the evaluated candles."
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Instrument or equity ticker symbol."
+        },
+        "timeframe": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "Candle resolution and lookback window label."
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["CONTINUE", "REDUCE_SIZE", "PAUSE", "NO_DECISION"],
+          "description": "Deterministic advisory guardrail decision."
+        },
+        "firedRules": {
+          "type": "array",
+          "description": "Named guardrail rule identifiers that triggered."
+        },
+        "reasons": {
+          "type": "array",
+          "description": "Quantitative reason strings derived from live metric values and thresholds."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Regime metric inputs evaluated (score, volZ, trend, changePointsInWindow, lastChangePointAgeBars)."
+        },
+        "thresholdsUsed": {
+          "type": "object",
+          "description": "Numeric threshold settings used during evaluation."
+        },
+        "lastCandleTime": {
+          "type": "number",
+          "description": "Unix timestamp in seconds of the final loaded candle, or null when empty."
+        },
+        "candleCount": {
+          "type": "number",
+          "description": "Number of candles loaded in the evaluated window."
+        }
+      },
+      "required": [
+        "timestamp",
+        "source",
+        "symbol",
+        "timeframe",
+        "decision",
+        "firedRules",
+        "reasons",
+        "inputs",
+        "thresholdsUsed",
+        "lastCandleTime",
+        "candleCount"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{uid}/decisions/{docId}": {
+      "schema": {
+        "$ref": "#/entities/DecisionLogEntry"
+      },
+      "description": "Per-user advisory guardrail decision log entries owned and accessible solely by request.auth.uid == uid."
+    }
+  }
+}
