@@ -44,6 +44,30 @@ function isAllowedResolution(value: string): value is CandleResolution {
   return (ALLOWED_RESOLUTIONS as readonly string[]).includes(value);
 }
 
+export function parseOptionalTimestampParam(
+  raw: unknown,
+  paramName: string,
+): { ok: true; value: number | null } | { ok: false; message: string } {
+  if (raw === undefined) {
+    return { ok: true, value: null };
+  }
+  if (typeof raw !== 'string') {
+    return { ok: false, message: `${paramName} must be a positive Unix timestamp in seconds` };
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { ok: true, value: null };
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return {
+      ok: false,
+      message: `${paramName} ("${trimmed}") must be a finite positive Unix timestamp in seconds`,
+    };
+  }
+  return { ok: true, value: Math.floor(parsed) };
+}
+
 export function createDeltaRouter(): Router {
   const router = Router();
 
@@ -159,8 +183,6 @@ export function createDeltaRouter(): Router {
     const resolutionRaw =
       typeof req.query.resolution === 'string' ? req.query.resolution.trim() : '15m';
     const basisRaw = typeof req.query.basis === 'string' ? req.query.basis.trim() : 'trade';
-    const startRaw = typeof req.query.start === 'string' ? Number(req.query.start) : NaN;
-    const endRaw = typeof req.query.end === 'string' ? Number(req.query.end) : NaN;
 
     if (!SYMBOL_REGEX.test(symbol)) {
       sendError(res, 400, 'INVALID_SYMBOL', 'Invalid or missing symbol parameter', 'Server Validator');
@@ -187,11 +209,21 @@ export function createDeltaRouter(): Router {
       return;
     }
 
+    const startParsed = parseOptionalTimestampParam(req.query.start, 'start');
+    if (!startParsed.ok) {
+      sendError(res, 400, 'INVALID_TIME_RANGE', startParsed.message, 'Server Validator');
+      return;
+    }
+    const endParsed = parseOptionalTimestampParam(req.query.end, 'end');
+    if (!endParsed.ok) {
+      sendError(res, 400, 'INVALID_TIME_RANGE', endParsed.message, 'Server Validator');
+      return;
+    }
+
     const stepSec = DELTA_RESOLUTION_SECONDS[resolutionRaw];
     const nowBucketSec = Math.floor(Date.now() / 1000 / stepSec) * stepSec;
-    const end = Number.isFinite(endRaw) && endRaw > 0 ? Math.floor(endRaw) : nowBucketSec;
-    const start =
-      Number.isFinite(startRaw) && startRaw > 0 ? Math.floor(startRaw) : end - 86_400;
+    const end = endParsed.value ?? nowBucketSec;
+    const start = startParsed.value ?? end - 86_400;
 
     if (start >= end) {
       sendError(

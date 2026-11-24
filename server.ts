@@ -17,9 +17,9 @@ const GLOBAL_API_RATE_LIMIT_MAX = 180; // per IP per minute across all /api rout
 const GLOBAL_API_RATE_LIMIT_WINDOW_MS = 60_000;
 const apiRateLimitMap = new Map<string, number[]>();
 
-function resolveTrustProxy(): boolean | number | string {
-  const raw = process.env.TRUST_PROXY?.trim();
-  if (!raw) return 1;
+export function resolveTrustProxy(rawEnv = process.env.TRUST_PROXY): boolean | number | string {
+  const raw = rawEnv?.trim();
+  if (!raw) return 0;
   if (raw === 'true') return true;
   if (raw === 'false') return false;
   const num = Number(raw);

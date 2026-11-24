@@ -85,6 +85,8 @@ function getUserMap(uid: string): Map<string, UserSessionRecord> {
   return m;
 }
 
+const loggedRateIntervalSymbols = new Set<string>();
+
 async function resolveContractAndQuote(symbol: string): Promise<{
   contract: PaperContractSpec;
   quote: LiveQuoteInput;
@@ -104,9 +106,16 @@ async function resolveContractAndQuote(symbol: string): Promise<{
       'UNSUPPORTED_CONTRACT_TYPE',
     );
   }
+  const contract = buildContractSpecFromProduct(product);
+  if (!loggedRateIntervalSymbols.has(contract.symbol)) {
+    loggedRateIntervalSymbols.add(contract.symbol);
+    console.info(
+      `[PaperBroker] ${contract.symbol} rateExchangeInterval=${contract.rateExchangeIntervalSec}s (source=${contract.rateExchangeIntervalSource})`,
+    );
+  }
   const nowSec = Math.floor(Date.now() / 1000);
   return {
-    contract: buildContractSpecFromProduct(product),
+    contract,
     quote: quoteFromTickerSnapshot(ticker, nowSec),
   };
 }
@@ -339,7 +348,8 @@ export async function restoreUserPaperSession(
   replayedTradesCount: number;
 }> {
   const map = getUserMap(uid);
-  if (!map.has(sessionId) && map.size >= MAX_PAPER_SESSIONS_PER_USER) {
+  const existing = map.get(sessionId);
+  if (!existing && map.size >= MAX_PAPER_SESSIONS_PER_USER) {
     throw new PaperStoreError(
       `Session cap reached: maximum ${MAX_PAPER_SESSIONS_PER_USER} paper sessions per account.`,
       400,
@@ -347,9 +357,32 @@ export async function restoreUserPaperSession(
     );
   }
 
+  const incomingVersion =
+    typeof snapshot.account.sessionVersion === 'number' &&
+    Number.isInteger(snapshot.account.sessionVersion) &&
+    snapshot.account.sessionVersion >= 1
+      ? snapshot.account.sessionVersion
+      : 1;
+  if (existing && incomingVersion < existing.state.account.sessionVersion) {
+    throw new PaperStoreError(
+      `Stale session snapshot rejected (incoming sessionVersion=${incomingVersion} < server sessionVersion=${existing.state.account.sessionVersion}).`,
+      409,
+      'STALE_SESSION_VERSION',
+    );
+  }
+
   const nowSec = Math.floor(Date.now() / 1000);
   const normalizedSnapshot: PaperSessionState = {
     ...(snapshot as PaperSessionState),
+    account: {
+      ...snapshot.account,
+      sessionVersion: incomingVersion,
+      heldOutInspectionCount: snapshot.heldOutLogs.filter((l) => l.sessionId === sessionId).length,
+    },
+    contract: {
+      ...snapshot.contract,
+      rateExchangeIntervalSource: snapshot.contract.rateExchangeIntervalSource ?? 'api',
+    },
     equityCurve:
       'equityCurve' in snapshot && Array.isArray(snapshot.equityCurve) && snapshot.equityCurve.length > 0
         ? snapshot.equityCurve
@@ -567,6 +600,7 @@ export async function updateUserSessionSettings(
     next.account.strategyEnabled = input.strategyEnabled;
   }
   next.account.updatedAtSec = nowSec;
+  next.account.sessionVersion = (next.account.sessionVersion ?? 1) + 1;
   rec.state = next;
   return next;
 }
@@ -699,6 +733,7 @@ export async function evaluateUserHeldOutSplit(
     );
   }
 
+  const derivedPreviousCount = state.heldOutLogs.filter((l) => l.sessionId === sessionId).length;
   const res = evaluateHeldOutSplit({
     sessionId,
     contract: state.contract,
@@ -707,13 +742,16 @@ export async function evaluateUserHeldOutSplit(
     tradeCandles,
     markCandles,
     riskLimits: state.account.riskLimits,
-    previousInspectionCount: state.account.heldOutInspectionCount,
+    previousInspectionCount: derivedPreviousCount,
     nowSec,
   });
 
-  state.account.heldOutInspectionCount = res.log.inspectionIndex;
-  state.account.updatedAtSec = nowSec;
   state.heldOutLogs.unshift(res.log);
+  state.account.heldOutInspectionCount = state.heldOutLogs.filter(
+    (l) => l.sessionId === sessionId,
+  ).length;
+  state.account.sessionVersion = (state.account.sessionVersion ?? 1) + 1;
+  state.account.updatedAtSec = nowSec;
 
   return {
     summary: res.summary,

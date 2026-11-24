@@ -80,7 +80,7 @@ export default function App() {
   const [alpacaSymbol, setAlpacaSymbol] = useState<string | null>(null);
   const [alpacaRecentSymbols, setAlpacaRecentSymbols] = useState<string[]>([]);
   const [alpacaTimeframe, setAlpacaTimeframe] = useState<AlpacaTimeframe>('1Day');
-  const [alpacaFeed, setAlpacaFeed] = useState<AlpacaFeed | undefined>(undefined);
+  const [alpacaFeed, setAlpacaFeed] = useState<AlpacaFeed>('iex');
   const [explainStatus, setExplainStatus] = useState<ExplainStatusResponse | null>(null);
   const [phase5Status, setPhase5Status] = useState<{
     completed: boolean;
@@ -248,8 +248,8 @@ export default function App() {
     } catch {
       setExplainStatus({
         configured: false,
-        primaryModel: 'gemini-4-hydrogen',
-        fallbackModel: 'gemini-3.1-flash-lite',
+        primaryModel: 'gemini-3.8-flash',
+        fallbackModel: 'gemini-3.5-flash-lite',
         primaryModelOk: null,
         fallbackModelOk: null,
         modelCheckError: null,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { alignDeltaCandleRange, buildDeltaCandleCacheKey } from '../server/deltaClient.ts';
+import { parseOptionalTimestampParam } from '../server/routes/delta.ts';
 
 test('buildDeltaCandleCacheKey aligns start and end timestamps inside the same resolution bucket', () => {
   const keyA = buildDeltaCandleCacheKey({
@@ -32,4 +33,19 @@ test('alignDeltaCandleRange aligns cleanly for all supported resolutions', () =>
   assert.equal(hourly.stepSec, 3600);
   assert.equal(hourly.startBucket, 3600);
   assert.equal(hourly.endBucket, 3600);
+});
+
+test('parseOptionalTimestampParam validates start/end query params strictly', () => {
+  assert.deepEqual(parseOptionalTimestampParam(undefined, 'start'), { ok: true, value: null });
+  assert.deepEqual(parseOptionalTimestampParam('  ', 'start'), { ok: true, value: null });
+  assert.deepEqual(parseOptionalTimestampParam('1700000105.9', 'start'), {
+    ok: true,
+    value: 1_700_000_105,
+  });
+
+  assert.equal(parseOptionalTimestampParam('abc', 'start').ok, false);
+  assert.equal(parseOptionalTimestampParam('-5', 'start').ok, false);
+  assert.equal(parseOptionalTimestampParam('0', 'end').ok, false);
+  assert.equal(parseOptionalTimestampParam('NaN', 'end').ok, false);
+  assert.equal(parseOptionalTimestampParam(['1700000000'], 'start').ok, false);
 });

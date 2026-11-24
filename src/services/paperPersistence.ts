@@ -202,6 +202,11 @@ export async function loadSavedPaperSnapshotsFromFirestore(
     if (!raw.contract || !raw.activeVersion) continue;
 
     const sessionId = raw.sessionId;
+    const heldOutLogs = heldOutSnap.docs
+      .map((x) => x.data() as HeldOutEvaluationLog)
+      .filter((l) => l.sessionId === sessionId)
+      .sort((a, b) => b.inspectionIndex - a.inspectionIndex);
+
     const account: PaperAccount = {
       sessionId: raw.sessionId,
       uid: raw.uid,
@@ -228,7 +233,13 @@ export async function loadSavedPaperSnapshotsFromFirestore(
       lastProcessedCandleTime: raw.lastProcessedCandleTime ?? null,
       lastFundingTime: raw.lastFundingTime ?? null,
       lastMarkPriceTicks: raw.lastMarkPriceTicks ?? null,
-      heldOutInspectionCount: raw.heldOutInspectionCount ?? 0,
+      heldOutInspectionCount: heldOutLogs.length,
+      sessionVersion:
+        typeof raw.sessionVersion === 'number' &&
+        Number.isInteger(raw.sessionVersion) &&
+        raw.sessionVersion >= 1
+          ? raw.sessionVersion
+          : 1,
       createdAtSec: raw.createdAtSec,
       updatedAtSec: raw.updatedAtSec,
     };
@@ -247,14 +258,13 @@ export async function loadSavedPaperSnapshotsFromFirestore(
       .map((x) => x.data() as PaperClosedTrade)
       .filter((t) => t.sessionId === sessionId)
       .sort((a, b) => b.closedAtSec - a.closedAtSec);
-    const heldOutLogs = heldOutSnap.docs
-      .map((x) => x.data() as HeldOutEvaluationLog)
-      .filter((l) => l.sessionId === sessionId)
-      .sort((a, b) => b.inspectionIndex - a.inspectionIndex);
 
     snapshots.push({
       account,
-      contract: raw.contract,
+      contract: {
+        ...raw.contract,
+        rateExchangeIntervalSource: raw.contract.rateExchangeIntervalSource ?? 'api',
+      },
       activeVersion: raw.activeVersion,
       versions: Array.from(versionsById.values()),
       openOrders,

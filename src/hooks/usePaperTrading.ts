@@ -375,10 +375,16 @@ export function usePaperTrading(params: {
           lookbackBars,
         });
         setHeldOutResult({ summary: res.summary, log: res.log });
+        const nextLogs = [res.log, ...activeSession.heldOutLogs];
         const nextState: PaperSessionState = {
           ...activeSession,
-          account: res.account,
-          heldOutLogs: [res.log, ...activeSession.heldOutLogs],
+          account: {
+            ...res.account,
+            heldOutInspectionCount: nextLogs.filter(
+              (l) => l.sessionId === activeSession.account.sessionId,
+            ).length,
+          },
+          heldOutLogs: nextLogs,
         };
         upsertSession(nextState);
         await syncPaperStateToFirestore(user.uid, nextState, { forceEventWrite: true });

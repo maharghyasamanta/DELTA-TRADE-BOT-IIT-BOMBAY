@@ -174,7 +174,8 @@ service cloud.firestore {
           'peakEquityUnits', 'dailyStartEquityUnits', 'currentDayKey',
           'resetTimeZone', 'parameterVersionId', 'strategyEnabled',
           'dailyLossHalted', 'drawdownHalted', 'killSwitchActive',
-          'stale', 'heldOutInspectionCount', 'createdAtSec', 'updatedAtSec',
+          'stale', 'heldOutInspectionCount', 'sessionVersion',
+          'createdAtSec', 'updatedAtSec',
           'contract', 'activeVersion', 'riskLimits', 'serverWrittenAt'
         ])
         && data.sessionId == sessionId
@@ -197,6 +198,7 @@ service cloud.firestore {
         && data.killSwitchActive is bool
         && data.stale is bool
         && isNum(data.heldOutInspectionCount)
+        && isNum(data.sessionVersion) && data.sessionVersion >= 1
         && isNum(data.createdAtSec)
         && isNum(data.updatedAtSec)
         && data.contract is map
@@ -231,6 +233,11 @@ service cloud.firestore {
           'contracts', 'priceTicks', 'markPriceTicks', 'slippageTicks',
           'liquidityRole', 'feeUnits', 'replayed', 'executedAtSec', 'serverWrittenAt'
         ])
+        && data.keys().hasOnly([
+          'fillId', 'clientOrderId', 'sessionId', 'symbol', 'side',
+          'contracts', 'priceTicks', 'markPriceTicks', 'slippageTicks',
+          'liquidityRole', 'feeUnits', 'replayed', 'executedAtSec', 'serverWrittenAt'
+        ])
         && data.fillId == fillId
         && isValidId(data.clientOrderId)
         && isValidId(data.sessionId)
@@ -260,6 +267,9 @@ service cloud.firestore {
         && isShortStr(data.symbol, 40)
         && data.side in ['LONG', 'SHORT']
         && isNum(data.contracts) && data.contracts >= 1
+        && isNum(data.entryPriceTicks) && data.entryPriceTicks >= 1
+        && isNum(data.markPriceTicks) && data.markPriceTicks >= 1
+        && isNum(data.liquidationPriceTicks) && data.liquidationPriceTicks >= 1
         && isUnitsStr(data.allocatedMarginUnits)
         && isUnitsStr(data.maintenanceMarginUnits)
         && isUnitsStr(data.unrealizedPnlUnits)
@@ -281,11 +291,21 @@ service cloud.firestore {
           'parameterVersionId', 'entryGuardrail', 'exitGuardrail',
           'openedAtSec', 'closedAtSec', 'serverWrittenAt'
         ])
+        && data.keys().hasOnly([
+          'tradeId', 'sessionId', 'symbol', 'side', 'contracts',
+          'entryPriceTicks', 'exitPriceTicks', 'grossPnlUnits',
+          'totalFeesUnits', 'totalSlippageUnits', 'fundingPnlUnits',
+          'liquidationPenaltyUnits', 'netPnlUnits', 'exitReason', 'replayed',
+          'parameterVersionId', 'entryGuardrail', 'exitGuardrail',
+          'openedAtSec', 'closedAtSec', 'serverWrittenAt'
+        ])
         && data.tradeId == tradeId
         && isValidId(data.sessionId)
         && isShortStr(data.symbol, 40)
         && data.side in ['LONG', 'SHORT']
         && isNum(data.contracts) && data.contracts >= 1
+        && isNum(data.entryPriceTicks) && data.entryPriceTicks >= 1
+        && isNum(data.exitPriceTicks) && data.exitPriceTicks >= 1
         && isUnitsStr(data.grossPnlUnits)
         && isUnitsStr(data.totalFeesUnits)
         && isUnitsStr(data.totalSlippageUnits)
@@ -308,6 +328,11 @@ service cloud.firestore {
           'guardrailThresholds', 'strategyParams', 'baseSlippageTicks',
           'fixedHalfSpreadTicks', 'serverWrittenAt'
         ])
+        && data.keys().hasOnly([
+          'versionId', 'label', 'createdAtSec', 'regimeOptions',
+          'guardrailThresholds', 'strategyParams', 'baseSlippageTicks',
+          'fixedHalfSpreadTicks', 'serverWrittenAt'
+        ])
         && data.versionId == versionId
         && isShortStr(data.label, 80)
         && isNum(data.createdAtSec)
@@ -323,7 +348,14 @@ service cloud.firestore {
       return data.keys().hasAll([
           'logId', 'sessionId', 'parameterVersionId', 'symbol', 'resolution',
           'inspectionIndex', 'evaluatedAtSec', 'tradeCount', 'netReturnPct',
-          'maxDrawdownPct', 'serverWrittenAt'
+          'profitFactor', 'maxDrawdownPct', 'winRate', 'warningMessage',
+          'serverWrittenAt'
+        ])
+        && data.keys().hasOnly([
+          'logId', 'sessionId', 'parameterVersionId', 'symbol', 'resolution',
+          'inspectionIndex', 'evaluatedAtSec', 'tradeCount', 'netReturnPct',
+          'profitFactor', 'maxDrawdownPct', 'winRate', 'warningMessage',
+          'serverWrittenAt'
         ])
         && data.logId == logId
         && isValidId(data.sessionId)
@@ -334,7 +366,10 @@ service cloud.firestore {
         && isNum(data.evaluatedAtSec)
         && isNum(data.tradeCount) && data.tradeCount >= 0
         && isNum(data.netReturnPct)
+        && isNullableNum(data.profitFactor)
         && isNum(data.maxDrawdownPct)
+        && isNullableNum(data.winRate)
+        && (data.warningMessage == null || isShortStr(data.warningMessage, 300))
         && data.serverWrittenAt == request.time;
     }
 

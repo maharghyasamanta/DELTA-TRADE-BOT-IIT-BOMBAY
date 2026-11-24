@@ -82,9 +82,10 @@
         "resolution": { "type": "string", "enum": ["15m", "1h"] },
         "balanceUnits": { "type": "string" },
         "equityUnits": { "type": "string" },
-        "resetTimeZone": { "type": "string" }
+        "resetTimeZone": { "type": "string" },
+        "sessionVersion": { "type": "number" }
       },
-      "required": ["sessionId", "uid", "symbol", "resolution", "balanceUnits", "equityUnits", "resetTimeZone"]
+      "required": ["sessionId", "uid", "symbol", "resolution", "balanceUnits", "equityUnits", "resetTimeZone", "sessionVersion"]
     },
     "PaperOrder": {
       "title": "PaperOrder",

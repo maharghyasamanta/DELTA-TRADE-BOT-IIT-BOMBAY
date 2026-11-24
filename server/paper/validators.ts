@@ -261,8 +261,21 @@ export function validateRestoreSnapshotInput(
   if (typeof acct.resetTimeZone !== 'string' || !isValidTimeZone(acct.resetTimeZone)) {
     return { ok: false, message: 'account.resetTimeZone must be a valid IANA timezone' };
   }
+  if (!isFiniteInt(acct.sessionVersion, 1, 1_000_000_000)) {
+    return { ok: false, message: 'account.sessionVersion must be a positive integer (>= 1)' };
+  }
   if (!isPlainObject(body.contract) || typeof body.contract.symbol !== 'string') {
     return { ok: false, message: 'Restore payload missing valid contract' };
+  }
+  if (
+    body.contract.rateExchangeIntervalSource !== undefined &&
+    body.contract.rateExchangeIntervalSource !== 'api' &&
+    body.contract.rateExchangeIntervalSource !== 'fallback_28800s'
+  ) {
+    return {
+      ok: false,
+      message: 'Restore payload contract.rateExchangeIntervalSource must be "api" or "fallback_28800s"',
+    };
   }
   if (!isValidParameterVersion(body.activeVersion)) {
     return { ok: false, message: 'Restore payload missing valid activeVersion' };

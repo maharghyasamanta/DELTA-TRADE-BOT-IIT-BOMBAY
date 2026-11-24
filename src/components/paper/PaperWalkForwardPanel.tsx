@@ -32,7 +32,9 @@ export function PaperWalkForwardPanel({
   );
   const [lookbackBars, setLookbackBars] = useState('720');
 
-  const inspectionCount = session.account.heldOutInspectionCount;
+  const inspectionCount = session.heldOutLogs.filter(
+    (l) => l.sessionId === session.account.sessionId,
+  ).length;
 
   return (
     <section className="rounded-lg border border-slate-800/90 bg-[#111A2E] p-4 space-y-4">

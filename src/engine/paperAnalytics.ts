@@ -519,9 +519,9 @@ export function evaluateHeldOutSplit(params: {
   const summary = summarizeSplit('held_out', heldOutCandles, bt);
   const inspectionIndex = Math.max(1, previousInspectionCount + 1);
   const warningMessage =
-    inspectionIndex > 1
-      ? `Held-out set inspected ${inspectionIndex} times — statistical guarantees are degraded by multiple testing.`
-      : null;
+    inspectionIndex === 1
+      ? 'Held-out set inspected 1 time — first look recorded; further evaluations degrade statistical validity (data-snooping bias).'
+      : `Held-out set inspected ${inspectionIndex} times — statistical guarantees are degraded by multiple testing.`;
 
   const log: HeldOutEvaluationLog = {
     logId: `heldout_${sessionId}_${inspectionIndex}_${nowSec}`,

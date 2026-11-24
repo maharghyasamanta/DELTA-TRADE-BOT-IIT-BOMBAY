@@ -213,7 +213,7 @@ describe('paperAnalytics, causal backtest, 3-split search & worker execution', (
       nowSec: 1_700_500_010,
     });
     assert.equal(look1.log.inspectionIndex, 1);
-    assert.equal(look1.log.warningMessage, null);
+    assert.match(look1.log.warningMessage ?? '', /first look|data-snooping/i);
 
     const look2 = evaluateHeldOutSplit({
       sessionId: 'sess_1',

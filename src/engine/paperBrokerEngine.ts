@@ -151,12 +151,13 @@ export function buildContractSpecFromProduct(product: DeltaProductSummary): Pape
   const defaultLeverage =
     Number.isFinite(parsedDefaultLev) && parsedDefaultLev >= 1 ? Math.floor(parsedDefaultLev) : 20;
 
-  const rateExchangeIntervalSec =
+  const hasApiRateInterval =
     typeof product.rateExchangeInterval === 'number' &&
     Number.isFinite(product.rateExchangeInterval) &&
-    product.rateExchangeInterval > 0
-      ? Math.floor(product.rateExchangeInterval)
-      : DEFAULT_FUNDING_INTERVAL_SEC;
+    product.rateExchangeInterval > 0;
+  const rateExchangeIntervalSec = hasApiRateInterval
+    ? Math.floor(product.rateExchangeInterval!)
+    : DEFAULT_FUNDING_INTERVAL_SEC;
 
   return {
     symbol: product.symbol,
@@ -181,6 +182,7 @@ export function buildContractSpecFromProduct(product: DeltaProductSummary): Pape
     liquidationPenaltyFactorUnits: unitsToString(parseFixedUnits(liqPenaltyStr, 'up')),
     defaultLeverage,
     rateExchangeIntervalSec,
+    rateExchangeIntervalSource: hasApiRateInterval ? 'api' : 'fallback_28800s',
   };
 }
 
@@ -261,6 +263,7 @@ export function createPaperSessionState(params: {
     lastFundingTime: params.createdAtSec,
     lastMarkPriceTicks: params.initialMarkPriceTicks ?? null,
     heldOutInspectionCount: 0,
+    sessionVersion: 1,
     createdAtSec: params.createdAtSec,
     updatedAtSec: params.createdAtSec,
   };
@@ -451,6 +454,16 @@ function cloneState(state: PaperSessionState): PaperSessionState {
     equityCurve: [...state.equityCurve],
     heldOutLogs: [...state.heldOutLogs],
   };
+}
+
+function bumpSessionVersion(state: PaperSessionState): void {
+  const prev =
+    typeof state.account.sessionVersion === 'number' &&
+    Number.isInteger(state.account.sessionVersion) &&
+    state.account.sessionVersion >= 1
+      ? state.account.sessionVersion
+      : 1;
+  state.account.sessionVersion = prev + 1;
 }
 
 function appendEquityPoint(state: PaperSessionState, timeSec: number): void {
@@ -1098,6 +1111,7 @@ export function submitPaperOrder(
         updatedAtSec: nowSec,
       };
       state.openOrders.push(openOrder);
+      bumpSessionVersion(state);
       return {
         state,
         order: openOrder,
@@ -1192,6 +1206,7 @@ export function submitPaperOrder(
   }
 
   refreshAccountAndRiskState(state, markTicks, nowSec);
+  bumpSessionVersion(state);
 
   const filledOrder: PaperOrder = {
     clientOrderId: input.clientOrderId,
@@ -1236,6 +1251,7 @@ export function cancelPaperOrder(
   order.status = 'CANCELLED';
   order.updatedAtSec = exchangeTimeSec;
   state.account.updatedAtSec = exchangeTimeSec;
+  bumpSessionVersion(state);
   return { state, cancelledOrder: order };
 }
 
@@ -1466,6 +1482,9 @@ export function processLiveMarketTick(
 
   // 4. Recompute mark-to-market equity & halt checks (never triggers Firestore write per tick!)
   refreshAccountAndRiskState(state, markTicks, nowSec);
+  if (lifecycleChanged) {
+    bumpSessionVersion(state);
+  }
 
   return { state, lifecycleChanged, newFills, newTrades };
 }
@@ -1862,6 +1881,7 @@ export function processBarStep(params: {
     }
   }
 
+  bumpSessionVersion(state);
   return { state, nextPendingOrder, newFills, newTrades };
 }
 
@@ -1890,6 +1910,7 @@ export function replayMissedHistory(params: {
     staleState.account.strategyEnabled = false;
     staleState.account.staleReason = `Offline duration (${Math.floor((nowSec - lastTime) / 86_400)}d) exceeded 7-day catch-up limit. Reset session to resume.`;
     staleState.account.updatedAtSec = nowSec;
+    bumpSessionVersion(staleState);
     return {
       state: staleState,
       replayedBars: 0,
@@ -1998,6 +2019,7 @@ export function triggerKillSwitch(
   state.account.killSwitchActive = true;
   state.account.strategyEnabled = false;
   refreshAccountAndRiskState(state, markTicks, nowSec);
+  bumpSessionVersion(state);
 
   return { state, closedTrades, cancelledOrders, fills };
 }

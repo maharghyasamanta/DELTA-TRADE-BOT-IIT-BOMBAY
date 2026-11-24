@@ -609,4 +609,106 @@ describe('paperBrokerEngine simulation & risk guards', () => {
     assert.equal(staleResult.state.account.strategyEnabled, false);
     assert.equal(staleResult.replayedBars, 0);
   });
+
+  it('tracks rateExchangeIntervalSource ("api" vs "fallback_28800s") and bumps sessionVersion monotonically', () => {
+    const apiSpec = buildContractSpecFromProduct(makeProduct({ rateExchangeInterval: 28800 }));
+    assert.equal(apiSpec.rateExchangeIntervalSec, 28800);
+    assert.equal(apiSpec.rateExchangeIntervalSource, 'api');
+
+    const fallbackSpec = buildContractSpecFromProduct(makeProduct({ rateExchangeInterval: null }));
+    assert.equal(fallbackSpec.rateExchangeIntervalSec, 28800);
+    assert.equal(fallbackSpec.rateExchangeIntervalSource, 'fallback_28800s');
+
+    const startSec = 1_700_000_000;
+    const state0 = createPaperSessionState({
+      sessionId: 'sess_ver',
+      uid: 'user_ver',
+      contract: apiSpec,
+      resolution: '15m',
+      createdAtSec: startSec,
+    });
+    assert.equal(state0.account.sessionVersion, 1);
+
+    // Submit OPEN limit order -> bumps sessionVersion to 2
+    const lim = submitPaperOrder(state0, {
+      clientOrderId: 'ord_ver_lim',
+      symbol: 'BTCUSD',
+      side: 'BUY',
+      type: 'LIMIT',
+      contracts: 2,
+      limitPriceTicks: 119_000,
+      guardrail: makeGuardrail('CONTINUE'),
+      quote: {
+        bestBidPrice: 60_000,
+        bestAskPrice: 60_001,
+        markPrice: 60_000,
+        bidSize: 10,
+        askSize: 10,
+        fundingRateRaw: null,
+        exchangeTimeSec: startSec + 5,
+      },
+    });
+    assert.equal(lim.state.account.sessionVersion, 2);
+
+    // Cancel limit order -> bumps sessionVersion to 3
+    const cancelled = cancelPaperOrder(lim.state, 'ord_ver_lim', startSec + 10);
+    assert.equal(cancelled.state.account.sessionVersion, 3);
+
+    // Market order fill -> bumps sessionVersion to 4
+    const mkt = submitPaperOrder(cancelled.state, {
+      clientOrderId: 'ord_ver_mkt',
+      symbol: 'BTCUSD',
+      side: 'BUY',
+      type: 'MARKET',
+      contracts: 2,
+      stopLossTicks: 119_800,
+      guardrail: makeGuardrail('CONTINUE'),
+      quote: {
+        bestBidPrice: 60_000,
+        bestAskPrice: 60_001,
+        markPrice: 60_000,
+        bidSize: 100,
+        askSize: 100,
+        fundingRateRaw: null,
+        exchangeTimeSec: startSec + 15,
+      },
+    });
+    assert.equal(mkt.state.account.sessionVersion, 4);
+
+    // Tick triggering SL -> bumps sessionVersion to 5
+    const bar: CandlePoint = {
+      time: startSec + 900,
+      open: 59_950,
+      high: 59_960,
+      low: 59_850,
+      close: 59_910,
+      volume: 100,
+    };
+    const barRes = processBarStep({
+      state: mkt.state,
+      tradeCandle: bar,
+      markCandle: bar,
+      closedHistoryUpToBar: [bar],
+      halfSpreadTicks: 2,
+      fundingRateRaw: null,
+      replayed: false,
+    });
+    assert.equal(barRes.state.account.sessionVersion, 5);
+
+    // Kill switch -> bumps sessionVersion to 6
+    const killed = triggerKillSwitch(
+      barRes.state,
+      {
+        bestBidPrice: 59_900,
+        bestAskPrice: 59_901,
+        markPrice: 59_900,
+        bidSize: 100,
+        askSize: 100,
+        fundingRateRaw: null,
+        exchangeTimeSec: startSec + 910,
+      },
+      makeGuardrail('CONTINUE'),
+    );
+    assert.equal(killed.state.account.sessionVersion, 6);
+  });
 });

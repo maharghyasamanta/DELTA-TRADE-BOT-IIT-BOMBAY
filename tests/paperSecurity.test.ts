@@ -15,6 +15,10 @@ import {
   verifyFirebaseTokenWithCerts,
 } from '../server/firebaseTokenVerifier.ts';
 import {
+  PaperStoreError,
+  restoreUserPaperSession,
+} from '../server/paper/paperStore.ts';
+import {
   validateCreateSessionInput,
   validateRestoreSnapshotInput,
   validateSubmitOrderInput,
@@ -223,6 +227,73 @@ describe('Hand-written server validators (zero zod)', () => {
 
     const badRestoreOwner = validateRestoreSnapshotInput(snap, 'sess_restore_1', 'other_uid');
     assert.equal(badRestoreOwner.ok, false);
+
+    // Reject missing, zero, or non-integer sessionVersion
+    const badVersionSnap = {
+      ...snap,
+      account: { ...snap.account, sessionVersion: 0 },
+    };
+    assert.equal(validateRestoreSnapshotInput(badVersionSnap, 'sess_restore_1', 'uid_owner').ok, false);
+
+    // Reject invalid rateExchangeIntervalSource
+    const badSourceSnap = {
+      ...snap,
+      contract: { ...snap.contract, rateExchangeIntervalSource: 'unknown' },
+    };
+    assert.equal(validateRestoreSnapshotInput(badSourceSnap, 'sess_restore_1', 'uid_owner').ok, false);
+  });
+
+  it('rejects stale snapshot restores with 409 STALE_SESSION_VERSION when incoming sessionVersion is older', async () => {
+    const product: DeltaProductSummary = {
+      id: 27,
+      symbol: 'BTCUSD',
+      description: 'BTC Perp',
+      shortDescription: null,
+      contractType: 'perpetual_futures',
+      underlyingSymbol: 'BTC',
+      settlingSymbol: 'USDT',
+      strikePrice: null,
+      settlementTime: null,
+      tickSize: '0.5',
+      contractValue: '0.001',
+      makerCommissionRate: '0.0002',
+      takerCommissionRate: '0.0005',
+      initialMargin: '0.5',
+      initialMarginScalingFactor: '0',
+      maintenanceMargin: '0.25',
+      maintenanceMarginScalingFactor: '0',
+      liquidationPenaltyFactor: '0.5',
+      defaultLeverage: '20',
+      positionSizeLimit: 100000,
+      tradingStatus: 'operational',
+      rateExchangeInterval: 28800,
+      sortPriority: 1,
+    };
+    const oldAnchorSec = 1_700_000_000;
+    const snapV2 = createPaperSessionState({
+      sessionId: 'sess_stale_ver_test',
+      uid: 'uid_ver_guard',
+      contract: buildContractSpecFromProduct(product),
+      resolution: '15m',
+      createdAtSec: oldAnchorSec,
+    });
+    snapV2.account.sessionVersion = 2;
+
+    const firstRestore = await restoreUserPaperSession('uid_ver_guard', 'sess_stale_ver_test', snapV2);
+    assert.equal(firstRestore.state.account.stale, true);
+    assert.ok(firstRestore.state.account.sessionVersion >= 3);
+
+    const olderSnapV1 = {
+      ...snapV2,
+      account: { ...snapV2.account, sessionVersion: 1 },
+    };
+    await assert.rejects(
+      () => restoreUserPaperSession('uid_ver_guard', 'sess_stale_ver_test', olderSnapV1),
+      (err: unknown) =>
+        err instanceof PaperStoreError &&
+        err.status === 409 &&
+        err.code === 'STALE_SESSION_VERSION',
+    );
   });
 });
 

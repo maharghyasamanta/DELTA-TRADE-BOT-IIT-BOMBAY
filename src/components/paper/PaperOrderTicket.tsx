@@ -90,7 +90,12 @@ export function PaperOrderTicket({
           <h3 className="text-sm font-semibold text-slate-100">Simulated Order Ticket & Bot Controls</h3>
           <p className="text-xs text-slate-400">
             Tick {session.contract.tickSizeStr} · Contract {session.contract.contractValueStr}{' '}
-            {markPrice !== null ? `· Mark ~$${markPrice.toFixed(2)}` : ''}
+            · Fees {(Number(session.contract.makerCommissionRateStr) * 100).toFixed(3)}%/{(Number(session.contract.takerCommissionRateStr) * 100).toFixed(3)}%{' '}
+            · Funding {session.contract.rateExchangeIntervalSec}s (
+            {session.contract.rateExchangeIntervalSource === 'fallback_28800s'
+              ? 'fallback 28,800s'
+              : 'Delta API'}
+            ){markPrice !== null ? ` · Mark ~$${markPrice.toFixed(2)}` : ''}
           </p>
         </div>
 

@@ -54,6 +54,7 @@ export interface PaperContractSpec {
   liquidationPenaltyFactorUnits: UnitsString;
   defaultLeverage: number;
   rateExchangeIntervalSec: number;
+  rateExchangeIntervalSource: 'api' | 'fallback_28800s';
 }
 
 export interface PaperStrategyParams {
@@ -118,6 +119,7 @@ export interface PaperAccount {
   lastFundingTime: number | null;
   lastMarkPriceTicks: number | null;
   heldOutInspectionCount: number;
+  sessionVersion: number;
   createdAtSec: number;
   updatedAtSec: number;
 }

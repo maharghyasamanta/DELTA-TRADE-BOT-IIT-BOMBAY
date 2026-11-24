@@ -51,10 +51,10 @@ export function PhaseRoadmapStrip({
       return `Model not found: ${explainStatus?.modelCheckError ?? `${explainStatus?.primaryModel ?? 'primary'} / ${explainStatus?.fallbackModel ?? 'fallback'} unavailable`}`;
     }
     if (geminiVerified) {
-      return `Verified live (${explainStatus?.primaryModel ?? 'gemini-4-hydrogen'}) with deterministic number-grounding guard`;
+      return `Verified live (${explainStatus?.primaryModel ?? 'gemini-3.8-flash'}) with deterministic number-grounding guard`;
     }
-    const primaryLabel = explainStatus?.primaryModel ?? 'gemini-4-hydrogen';
-    const fallbackLabel = explainStatus?.fallbackModel ?? 'gemini-3.1-flash-lite';
+    const primaryLabel = explainStatus?.primaryModel ?? 'gemini-3.8-flash';
+    const fallbackLabel = explainStatus?.fallbackModel ?? 'gemini-3.5-flash-lite';
     const modelNote =
       explainStatus?.primaryModelOk === false
         ? `primary "${primaryLabel}" not found, fallback "${fallbackLabel}" available`

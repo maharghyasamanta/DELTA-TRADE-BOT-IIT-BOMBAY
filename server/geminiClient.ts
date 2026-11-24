@@ -18,9 +18,9 @@ export { EXPLAIN_SYSTEM_INSTRUCTION };
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? '';
 export const GEMINI_CONFIGURED = Boolean(GEMINI_API_KEY);
 
-export const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-4-hydrogen';
+export const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 export const GEMINI_FALLBACK_MODEL =
-  process.env.GEMINI_FALLBACK_MODEL?.trim() || 'gemini-3.1-flash-lite';
+  process.env.GEMINI_FALLBACK_MODEL?.trim() || 'gemini-3.5-flash-lite';
 export const EXPLAIN_CACHE_TTL_MS = 60_000;
 export const EXPLAIN_TIMEOUT_MS = 12_000;
 export const EXPLAIN_MAX_ATTEMPTS = 2; // retry only 429 and 5xx/network
