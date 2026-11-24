@@ -258,6 +258,10 @@ export function normalizeTickerRecord(
     spotPrice: toNullableNumber(raw.spot_price),
     markBasis: toNullableNumber(raw.mark_basis),
     fundingRate: toNullableNumber(raw.funding_rate),
+    fundingRateRaw:
+      raw.funding_rate !== null && raw.funding_rate !== undefined && raw.funding_rate !== ''
+        ? String(raw.funding_rate)
+        : null,
     oi: toNullableNumber(raw.oi),
     oiContracts: toNullableNumber(raw.oi_contracts),
     oiValueUsd: toNullableNumber(raw.oi_value_usd),
@@ -392,6 +396,28 @@ export async function fetchLiveProducts(): Promise<{
           item.taker_commission_rate !== null && item.taker_commission_rate !== undefined
             ? String(item.taker_commission_rate)
             : null,
+        initialMargin:
+          item.initial_margin !== null && item.initial_margin !== undefined
+            ? String(item.initial_margin)
+            : null,
+        initialMarginScalingFactor:
+          item.initial_margin_scaling_factor !== null && item.initial_margin_scaling_factor !== undefined
+            ? String(item.initial_margin_scaling_factor)
+            : null,
+        maintenanceMargin:
+          item.maintenance_margin !== null && item.maintenance_margin !== undefined
+            ? String(item.maintenance_margin)
+            : null,
+        maintenanceMarginScalingFactor:
+          item.maintenance_margin_scaling_factor !== null && item.maintenance_margin_scaling_factor !== undefined
+            ? String(item.maintenance_margin_scaling_factor)
+            : null,
+        liquidationPenaltyFactor:
+          item.liquidation_penalty_factor !== null && item.liquidation_penalty_factor !== undefined
+            ? String(item.liquidation_penalty_factor)
+            : null,
+        positionSizeLimit: toNullableNumber(item.position_size_limit),
+        rateExchangeInterval: toNullableNumber(item.rate_exchange_interval),
         sortPriority: uiConfig ? toNullableNumber(uiConfig.sort_priority) : null,
       });
     }

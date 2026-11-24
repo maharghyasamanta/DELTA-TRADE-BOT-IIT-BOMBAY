@@ -32,6 +32,7 @@ import {
   type MarketDataSource,
 } from './components/InstrumentPicker';
 import { LiveTickerStrip } from './components/LiveTickerStrip';
+import { PaperTradingWorkspace } from './components/paper/PaperTradingWorkspace';
 import { PhaseRoadmapStrip } from './components/PhaseRoadmapStrip';
 import { RegimePanel } from './components/RegimePanel';
 import { TopBar } from './components/TopBar';
@@ -61,7 +62,7 @@ interface ErrorState {
 }
 
 export default function App() {
-  const [activeSection, setActiveSection] = useState<'monitor' | 'specs' | 'roadmap'>('monitor');
+  const [activeSection, setActiveSection] = useState<'monitor' | 'specs' | 'roadmap' | 'paper'>('monitor');
   const [dataSource, setDataSource] = useState<MarketDataSource>('delta');
 
   // Health telemetry
@@ -498,11 +499,21 @@ export default function App() {
   const pendingSectionRef = useRef<'monitor' | 'specs' | 'roadmap' | null>(null);
 
   const handleNavigate = useCallback(
-    (section: 'monitor' | 'specs' | 'roadmap') => {
+    (section: 'monitor' | 'specs' | 'roadmap' | 'paper') => {
+      const prevSection = activeSection;
       setActiveSection(section);
+      if (section === 'paper') {
+        pendingSectionRef.current = null;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       if (section === 'specs' && dataSource !== 'delta') {
         pendingSectionRef.current = 'specs';
         setDataSource('delta');
+        return;
+      }
+      if (prevSection === 'paper') {
+        pendingSectionRef.current = section;
         return;
       }
       const el = document.getElementById(section);
@@ -510,20 +521,21 @@ export default function App() {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     },
-    [dataSource],
+    [activeSection, dataSource],
   );
 
   useEffect(() => {
-    if (pendingSectionRef.current === 'specs' && dataSource === 'delta') {
-      pendingSectionRef.current = null;
-      requestAnimationFrame(() => {
-        const el = document.getElementById('specs');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      });
-    }
-  }, [dataSource]);
+    const pending = pendingSectionRef.current;
+    if (!pending || activeSection === 'paper') return;
+    if (pending === 'specs' && dataSource !== 'delta') return;
+    pendingSectionRef.current = null;
+    requestAnimationFrame(() => {
+      const el = document.getElementById(pending);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }, [dataSource, activeSection]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0B1120] text-slate-100">
@@ -651,226 +663,246 @@ export default function App() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
-          <InstrumentPicker
-            dataSource={dataSource}
-            onChangeDataSource={handleChangeDataSource}
+        {activeSection === 'paper' ? (
+          <PaperTradingWorkspace
+            user={firebaseAuth.user}
+            authReady={firebaseAuth.authReady}
+            isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+            getIdToken={firebaseAuth.getIdToken}
+            onSignIn={() => void firebaseAuth.signInWithGoogle()}
             products={products}
-            underlyings={underlyings}
-            selectedSymbol={selectedSymbol}
-            onSelectSymbol={handleSelectSymbol}
-            isLoading={productsLoading}
-            error={productsError}
-            source={productsSource}
-            fetchedAt={productsFetchedAt}
-            onRetry={() => void loadProducts()}
-            alpacaSelectedSymbol={alpacaSymbol}
-            alpacaRecentSymbols={alpacaRecentSymbols}
-            alpacaConfigured={alpacaStatus ? alpacaStatus.configured : null}
-            alpacaCheckedAt={alpacaStatus?.checkedAt ?? null}
-            onSelectAlpacaSymbol={handleSelectAlpacaSymbol}
-            onAfterAlpacaValidate={loadAlpacaStatus}
+            defaultSymbol={selectedSymbol}
           />
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[320px_minmax(0,1fr)] items-start">
+              <InstrumentPicker
+                dataSource={dataSource}
+                onChangeDataSource={handleChangeDataSource}
+                products={products}
+                underlyings={underlyings}
+                selectedSymbol={selectedSymbol}
+                onSelectSymbol={handleSelectSymbol}
+                isLoading={productsLoading}
+                error={productsError}
+                source={productsSource}
+                fetchedAt={productsFetchedAt}
+                onRetry={() => void loadProducts()}
+                alpacaSelectedSymbol={alpacaSymbol}
+                alpacaRecentSymbols={alpacaRecentSymbols}
+                alpacaConfigured={alpacaStatus ? alpacaStatus.configured : null}
+                alpacaCheckedAt={alpacaStatus?.checkedAt ?? null}
+                onSelectAlpacaSymbol={handleSelectAlpacaSymbol}
+                onAfterAlpacaValidate={loadAlpacaStatus}
+              />
 
-          <div className="min-w-0 space-y-5">
-            {dataSource === 'delta' ? (
-              <>
-                <LiveTickerStrip
-                  symbol={selectedSymbol}
-                  ticker={ticker}
-                  isLoading={tickerLoading}
-                  error={tickerError}
-                  source={tickerSource}
-                  lastUpdated={tickerUpdatedAt}
-                  onRefresh={() => {
-                    if (selectedSymbol) void loadTicker(selectedSymbol);
-                  }}
-                />
+              <div className="min-w-0 space-y-5">
+                {dataSource === 'delta' ? (
+                  <>
+                    <LiveTickerStrip
+                      symbol={selectedSymbol}
+                      ticker={ticker}
+                      isLoading={tickerLoading}
+                      error={tickerError}
+                      source={tickerSource}
+                      lastUpdated={tickerUpdatedAt}
+                      onRefresh={() => {
+                        if (selectedSymbol) void loadTicker(selectedSymbol);
+                      }}
+                    />
 
-                <CandleChartPanel
-                  symbol={selectedSymbol}
-                  tickSize={selectedProduct?.tickSize ?? ticker?.tickSize ?? null}
-                  resolution={resolution}
-                  onChangeResolution={setResolution}
-                  lookbackId={lookbackId}
-                  onChangeLookback={setLookbackId}
-                  basis={basis}
-                  onChangeBasis={setBasis}
-                  candles={candles}
-                  liveCandle={liveCandle}
-                  isLoading={candlesLoading}
-                  error={candlesError}
-                  source={candlesSource}
-                  fetchedAt={candlesFetchedAt}
-                  querySymbol={candlesQuerySymbol}
-                  onRetry={() => {
-                    if (selectedSymbol) {
-                      void loadCandles(selectedSymbol, resolution, lookbackId, basis);
-                    }
-                  }}
-                  markers={dataSource === 'delta' ? regimeResult.markers : undefined}
-                />
+                    <CandleChartPanel
+                      symbol={selectedSymbol}
+                      tickSize={selectedProduct?.tickSize ?? ticker?.tickSize ?? null}
+                      resolution={resolution}
+                      onChangeResolution={setResolution}
+                      lookbackId={lookbackId}
+                      onChangeLookback={setLookbackId}
+                      basis={basis}
+                      onChangeBasis={setBasis}
+                      candles={candles}
+                      liveCandle={liveCandle}
+                      isLoading={candlesLoading}
+                      error={candlesError}
+                      source={candlesSource}
+                      fetchedAt={candlesFetchedAt}
+                      querySymbol={candlesQuerySymbol}
+                      onRetry={() => {
+                        if (selectedSymbol) {
+                          void loadCandles(selectedSymbol, resolution, lookbackId, basis);
+                        }
+                      }}
+                      markers={dataSource === 'delta' ? regimeResult.markers : undefined}
+                    />
 
-                <RegimePanel
-                  result={regimeResult}
-                  sourceLabel="Delta"
-                  timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
-                  symbol={selectedSymbol}
-                />
+                    <RegimePanel
+                      result={regimeResult}
+                      sourceLabel="Delta"
+                      timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
+                      symbol={selectedSymbol}
+                    />
 
-                <GuardrailPanel
-                  regimeResult={regimeResult}
-                  sourceLabel="Delta"
-                  timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
-                  symbol={selectedSymbol}
-                  user={firebaseAuth.user}
-                  authReady={firebaseAuth.authReady}
-                  isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
-                  onSignIn={() => void firebaseAuth.signInWithGoogle()}
-                />
+                    <GuardrailPanel
+                      regimeResult={regimeResult}
+                      sourceLabel="Delta"
+                      timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
+                      symbol={selectedSymbol}
+                      user={firebaseAuth.user}
+                      authReady={firebaseAuth.authReady}
+                      isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+                      onSignIn={() => void firebaseAuth.signInWithGoogle()}
+                    />
 
-                <ExplanationPanel
-                  regimeResult={regimeResult}
-                  sourceLabel="Delta"
-                  timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
-                  symbol={selectedSymbol}
-                  explainStatus={explainStatus}
-                  onAfterRequest={() => void loadExplainStatus()}
-                />
+                    <ExplanationPanel
+                      regimeResult={regimeResult}
+                      sourceLabel="Delta"
+                      timeframeLabel={`${resolution} (${lookbackId.toUpperCase()})`}
+                      symbol={selectedSymbol}
+                      explainStatus={explainStatus}
+                      onAfterRequest={() => void loadExplainStatus()}
+                    />
 
-                <EvaluationPanel
-                  source="delta"
-                  symbol={selectedSymbol}
-                  basis={basis}
-                  onEvaluationStateChange={setPhase5Status}
-                />
-              </>
-            ) : (
-              <>
-                {alpacaSymbol && (
-                  <AlpacaQuotePanel
-                    symbol={alpacaSymbol}
-                    configured={alpacaStatus ? alpacaStatus.configured : null}
-                    onAfterRequest={loadAlpacaStatus}
-                  />
+                    <EvaluationPanel
+                      source="delta"
+                      symbol={selectedSymbol}
+                      basis={basis}
+                      onEvaluationStateChange={setPhase5Status}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {alpacaSymbol && (
+                      <AlpacaQuotePanel
+                        symbol={alpacaSymbol}
+                        configured={alpacaStatus ? alpacaStatus.configured : null}
+                        onAfterRequest={loadAlpacaStatus}
+                      />
+                    )}
+
+                    {alpacaSymbol &&
+                      !alpacaBars.isLoading &&
+                      !alpacaBars.error &&
+                      alpacaBars.candles.length === 0 && (
+                        <div
+                          role="status"
+                          className="rounded-lg border border-slate-800/90 bg-[#111A2E] px-5 py-3 text-xs text-slate-300"
+                        >
+                          <span>
+                            Alpaca returned 0 bars for {alpacaSymbol}, {alpacaTimeframe}, and{' '}
+                            {alpacaFeed ?? 'plan default'}
+                          </span>
+                          <span aria-hidden="true"> · </span>
+                          <span className="font-mono text-slate-400 tabular-nums">
+                            At {formatTimestamp(alpacaBars.fetchedAt)}
+                          </span>
+                          <span className="text-slate-400">
+                            {' '}
+                            (the market may be closed or the window empty)
+                          </span>
+                        </div>
+                      )}
+
+                    <AlpacaBarsChart
+                      symbol={alpacaSymbol}
+                      timeframe={alpacaTimeframe}
+                      onChangeTimeframe={setAlpacaTimeframe}
+                      candles={alpacaBars.candles}
+                      isLoading={alpacaBars.isLoading}
+                      error={alpacaBars.error}
+                      source={alpacaBars.source}
+                      fetchedAt={alpacaBars.fetchedAt}
+                      feed={alpacaBars.feed}
+                      onRetry={() => {
+                        void loadAlpacaStatus();
+                        alpacaBars.refetch();
+                      }}
+                      onSwitchToIex={() => setAlpacaFeed('iex')}
+                      markers={dataSource === 'alpaca' ? regimeResult.markers : undefined}
+                    />
+
+                    <RegimePanel
+                      result={regimeResult}
+                      sourceLabel="Alpaca"
+                      timeframeLabel={alpacaTimeframe}
+                      symbol={alpacaSymbol}
+                    />
+
+                    <GuardrailPanel
+                      regimeResult={regimeResult}
+                      sourceLabel="Alpaca"
+                      timeframeLabel={alpacaTimeframe}
+                      symbol={alpacaSymbol}
+                      user={firebaseAuth.user}
+                      authReady={firebaseAuth.authReady}
+                      isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+                      onSignIn={() => void firebaseAuth.signInWithGoogle()}
+                    />
+
+                    <ExplanationPanel
+                      regimeResult={regimeResult}
+                      sourceLabel="Alpaca"
+                      timeframeLabel={alpacaTimeframe}
+                      symbol={alpacaSymbol}
+                      explainStatus={explainStatus}
+                      onAfterRequest={() => void loadExplainStatus()}
+                    />
+
+                    <EvaluationPanel
+                      source="alpaca"
+                      symbol={alpacaSymbol}
+                      alpacaFeed={alpacaFeed}
+                      alpacaConfigured={alpacaStatus ? alpacaStatus.configured : null}
+                      onAfterAlpacaRequest={() => void loadAlpacaStatus()}
+                      onEvaluationStateChange={setPhase5Status}
+                    />
+                  </>
                 )}
+              </div>
+            </div>
 
-                {alpacaSymbol &&
-                  !alpacaBars.isLoading &&
-                  !alpacaBars.error &&
-                  alpacaBars.candles.length === 0 && (
-                    <div
-                      role="status"
-                      className="rounded-lg border border-slate-800/90 bg-[#111A2E] px-5 py-3 text-xs text-slate-300"
-                    >
-                      <span>
-                        Alpaca returned 0 bars for {alpacaSymbol}, {alpacaTimeframe}, and{' '}
-                        {alpacaFeed ?? 'plan default'}
-                      </span>
-                      <span aria-hidden="true"> · </span>
-                      <span className="font-mono text-slate-400 tabular-nums">
-                        At {formatTimestamp(alpacaBars.fetchedAt)}
-                      </span>
-                      <span className="text-slate-400">
-                        {' '}
-                        (the market may be closed or the window empty)
-                      </span>
-                    </div>
-                  )}
-
-                <AlpacaBarsChart
-                  symbol={alpacaSymbol}
-                  timeframe={alpacaTimeframe}
-                  onChangeTimeframe={setAlpacaTimeframe}
-                  candles={alpacaBars.candles}
-                  isLoading={alpacaBars.isLoading}
-                  error={alpacaBars.error}
-                  source={alpacaBars.source}
-                  fetchedAt={alpacaBars.fetchedAt}
-                  feed={alpacaBars.feed}
-                  onRetry={() => {
-                    void loadAlpacaStatus();
-                    alpacaBars.refetch();
-                  }}
-                  onSwitchToIex={() => setAlpacaFeed('iex')}
-                  markers={dataSource === 'alpaca' ? regimeResult.markers : undefined}
-                />
-
-                <RegimePanel
-                  result={regimeResult}
-                  sourceLabel="Alpaca"
-                  timeframeLabel={alpacaTimeframe}
-                  symbol={alpacaSymbol}
-                />
-
-                <GuardrailPanel
-                  regimeResult={regimeResult}
-                  sourceLabel="Alpaca"
-                  timeframeLabel={alpacaTimeframe}
-                  symbol={alpacaSymbol}
-                  user={firebaseAuth.user}
-                  authReady={firebaseAuth.authReady}
-                  isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
-                  onSignIn={() => void firebaseAuth.signInWithGoogle()}
-                />
-
-                <ExplanationPanel
-                  regimeResult={regimeResult}
-                  sourceLabel="Alpaca"
-                  timeframeLabel={alpacaTimeframe}
-                  symbol={alpacaSymbol}
-                  explainStatus={explainStatus}
-                  onAfterRequest={() => void loadExplainStatus()}
-                />
-
-                <EvaluationPanel
-                  source="alpaca"
-                  symbol={alpacaSymbol}
-                  alpacaFeed={alpacaFeed}
-                  alpacaConfigured={alpacaStatus ? alpacaStatus.configured : null}
-                  onAfterAlpacaRequest={() => void loadAlpacaStatus()}
-                  onEvaluationStateChange={setPhase5Status}
-                />
-              </>
+            {dataSource === 'delta' && (
+              <ContractSpecsPanel
+                product={selectedProduct}
+                source={productsSource}
+                fetchedAt={productsFetchedAt}
+              />
             )}
-          </div>
-        </div>
 
-        {dataSource === 'delta' && (
-          <ContractSpecsPanel
-            product={selectedProduct}
-            source={productsSource}
-            fetchedAt={productsFetchedAt}
-          />
+            <DecisionLogPanel
+              user={firebaseAuth.user}
+              authReady={firebaseAuth.authReady}
+              isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
+              firebaseConfigError={firebaseAuth.firebaseConfigError}
+              onSignIn={() => void firebaseAuth.signInWithGoogle()}
+            />
+
+            <PhaseRoadmapStrip
+              firebaseConfigured={firebaseAuth.isFirebaseConfigured}
+              isSignedIn={Boolean(firebaseAuth.user)}
+              geminiConfigured={explainStatus ? explainStatus.configured : null}
+              geminiVerified={Boolean(explainStatus?.lastSuccessAt)}
+              explainStatus={explainStatus}
+              phase5Completed={phase5Status.completed}
+              phase5Error={phase5Status.errorMessage}
+              phase5Detail={phase5Status.summaryDetail}
+            />
+          </>
         )}
-
-        <DecisionLogPanel
-          user={firebaseAuth.user}
-          authReady={firebaseAuth.authReady}
-          isFirebaseConfigured={firebaseAuth.isFirebaseConfigured}
-          firebaseConfigError={firebaseAuth.firebaseConfigError}
-          onSignIn={() => void firebaseAuth.signInWithGoogle()}
-        />
-
-        <PhaseRoadmapStrip
-          firebaseConfigured={firebaseAuth.isFirebaseConfigured}
-          isSignedIn={Boolean(firebaseAuth.user)}
-          geminiConfigured={explainStatus ? explainStatus.configured : null}
-          geminiVerified={Boolean(explainStatus?.lastSuccessAt)}
-          explainStatus={explainStatus}
-          phase5Completed={phase5Status.completed}
-          phase5Error={phase5Status.errorMessage}
-          phase5Detail={phase5Status.summaryDetail}
-        />
       </main>
 
       <footer className="border-t border-slate-800/80 bg-[#0B1120] px-6 py-4">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
-          <span>Read-only. Not financial advice.</span>
+          <span>
+            {activeSection === 'paper'
+              ? 'PAPER — SIMULATED FUNDS ONLY. Not financial advice.'
+              : 'Read-only. Not financial advice.'}
+          </span>
           <span className="font-mono text-[11px] text-slate-500">
-            {dataSource === 'alpaca'
-              ? 'Data proxied server-side from data.alpaca.markets (public market data only)'
-              : 'Data proxied server-side from api.india.delta.exchange (public market data only)'}
+            {activeSection === 'paper'
+              ? 'Simulated server broker using live api.india.delta.exchange market data (no exchange order endpoints)'
+              : dataSource === 'alpaca'
+                ? 'Data proxied server-side from data.alpaca.markets (public market data only)'
+                : 'Data proxied server-side from api.india.delta.exchange (public market data only)'}
           </span>
         </div>
       </footer>

@@ -102,3 +102,36 @@ export interface ExplainStatusResponse {
   checkedAt: string;
 }
 
+export type ExplainMode = 'market_snapshot' | 'paper_trade_review';
+
+export const PAPER_TRADE_EXPLAIN_SYSTEM_INSTRUCTION =
+  'You are a read-only historical trade-log narrator for simulated paper trades. Explain objectively in plain English what happened in this single completed simulated trade. Rules: (1) Use ONLY numbers already present in the input JSON (or their standard decimal rounded display); never invent or calculate new numbers. (2) You may describe the historical trade using past-tense terms ("long", "short", "entry", "exit") strictly for this completed simulated trade, but you MUST NOT recommend actions, give advice, or predict future price movements. (3) Never use the words: buy, sell, order, position, guaranteed, or predict. (4) Keep summary concise (<= 360 characters), up to 5 keyPoints, and up to 3 cautions.';
+
+export interface PaperTradeExplainRequest {
+  tradeId: string;
+  symbol: string;
+  side: 'LONG' | 'SHORT';
+  contracts: number;
+  entryPriceDisplay: string;
+  exitPriceDisplay: string;
+  grossPnlDisplay: string;
+  feesDisplay: string;
+  slippageDisplay: string;
+  fundingDisplay: string;
+  liquidationPenaltyDisplay: string;
+  netPnlDisplay: string;
+  exitReason: string;
+  openedAtSec: number;
+  closedAtSec: number;
+  parameterVersionId: string;
+  entryGuardrailDecision: string;
+  entryScore: number | null;
+  entryVolZ: number | null;
+  entryTrend: number | null;
+  exitGuardrailDecision: string;
+  exitScore: number | null;
+  exitVolZ: number | null;
+  exitTrend: number | null;
+  entryFiredRules: string[];
+  exitFiredRules: string[];
+}

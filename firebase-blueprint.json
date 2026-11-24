@@ -70,6 +70,89 @@
         "lastCandleTime",
         "candleCount"
       ]
+    },
+    "PaperAccount": {
+      "title": "PaperAccount",
+      "description": "Simulated paper trading account snapshot with string-serialized BigInt units and configurable reset timezone.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "uid": { "type": "string" },
+        "symbol": { "type": "string" },
+        "resolution": { "type": "string", "enum": ["15m", "1h"] },
+        "balanceUnits": { "type": "string" },
+        "equityUnits": { "type": "string" },
+        "resetTimeZone": { "type": "string" }
+      },
+      "required": ["sessionId", "uid", "symbol", "resolution", "balanceUnits", "equityUnits", "resetTimeZone"]
+    },
+    "PaperOrder": {
+      "title": "PaperOrder",
+      "description": "Simulated paper order keyed by clientOrderId.",
+      "type": "object",
+      "properties": {
+        "clientOrderId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "status": { "type": "string", "enum": ["OPEN", "FILLED", "CANCELLED", "REJECTED"] }
+      },
+      "required": ["clientOrderId", "sessionId", "status"]
+    },
+    "PaperFill": {
+      "title": "PaperFill",
+      "description": "Immutable simulated fill keyed by fillId.",
+      "type": "object",
+      "properties": {
+        "fillId": { "type": "string" },
+        "clientOrderId": { "type": "string" },
+        "feeUnits": { "type": "string" },
+        "replayed": { "type": "boolean" }
+      },
+      "required": ["fillId", "clientOrderId", "feeUnits", "replayed"]
+    },
+    "PaperPosition": {
+      "title": "PaperPosition",
+      "description": "Open simulated paper position.",
+      "type": "object",
+      "properties": {
+        "positionId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "side": { "type": "string", "enum": ["LONG", "SHORT"] },
+        "contracts": { "type": "number" }
+      },
+      "required": ["positionId", "sessionId", "side", "contracts"]
+    },
+    "PaperClosedTrade": {
+      "title": "PaperClosedTrade",
+      "description": "Immutable simulated closed trade journal entry keyed by tradeId.",
+      "type": "object",
+      "properties": {
+        "tradeId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "netPnlUnits": { "type": "string" },
+        "replayed": { "type": "boolean" }
+      },
+      "required": ["tradeId", "sessionId", "netPnlUnits", "replayed"]
+    },
+    "PaperParameterVersion": {
+      "title": "PaperParameterVersion",
+      "description": "Immutable pinned parameter/guardrail version.",
+      "type": "object",
+      "properties": {
+        "versionId": { "type": "string" },
+        "label": { "type": "string" }
+      },
+      "required": ["versionId", "label"]
+    },
+    "HeldOutEvaluationLog": {
+      "title": "HeldOutEvaluationLog",
+      "description": "Immutable audit record of held-out split evaluations.",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "inspectionIndex": { "type": "number" }
+      },
+      "required": ["logId", "sessionId", "inspectionIndex"]
     }
   },
   "firestore": {
@@ -78,6 +161,34 @@
         "$ref": "#/entities/DecisionLogEntry"
       },
       "description": "Per-user advisory guardrail decision log entries owned and accessible solely by request.auth.uid == uid."
+    },
+    "/users/{uid}/paper/ledger/accounts/{sessionId}": {
+      "schema": { "$ref": "#/entities/PaperAccount" },
+      "description": "Saved simulated paper account state (event + 60s throttled writes)."
+    },
+    "/users/{uid}/paper/ledger/orders/{clientOrderId}": {
+      "schema": { "$ref": "#/entities/PaperOrder" },
+      "description": "Simulated paper orders keyed by clientOrderId."
+    },
+    "/users/{uid}/paper/ledger/fills/{fillId}": {
+      "schema": { "$ref": "#/entities/PaperFill" },
+      "description": "Immutable simulated paper fills."
+    },
+    "/users/{uid}/paper/ledger/positions/{posId}": {
+      "schema": { "$ref": "#/entities/PaperPosition" },
+      "description": "Open simulated paper positions."
+    },
+    "/users/{uid}/paper/ledger/trades/{tradeId}": {
+      "schema": { "$ref": "#/entities/PaperClosedTrade" },
+      "description": "Immutable simulated closed trades."
+    },
+    "/users/{uid}/paper/ledger/versions/{versionId}": {
+      "schema": { "$ref": "#/entities/PaperParameterVersion" },
+      "description": "Immutable parameter versions."
+    },
+    "/users/{uid}/paper/ledger/heldOutLogs/{logId}": {
+      "schema": { "$ref": "#/entities/HeldOutEvaluationLog" },
+      "description": "Immutable audit log of held-out set inspections."
     }
   }
 }

@@ -158,12 +158,234 @@ service cloud.firestore {
         && data.candleCount >= 0;
     }
 
+    function isUnitsStr(val) {
+      return val is string && val.size() >= 1 && val.size() <= 38 && val.matches('^-?\\d+$');
+    }
+
+    function isShortStr(val, maxLen) {
+      return val is string && val.size() >= 1 && val.size() <= maxLen;
+    }
+
+    function isValidPaperAccountDoc(data, sessionId, uid) {
+      return data.keys().hasAll([
+          'sessionId', 'uid', 'symbol', 'resolution',
+          'startingBalanceUnits', 'balanceUnits', 'equityUnits',
+          'realizedPnlUnits', 'unrealizedPnlUnits', 'marginUsedUnits',
+          'peakEquityUnits', 'dailyStartEquityUnits', 'currentDayKey',
+          'resetTimeZone', 'parameterVersionId', 'strategyEnabled',
+          'dailyLossHalted', 'drawdownHalted', 'killSwitchActive',
+          'stale', 'heldOutInspectionCount', 'createdAtSec', 'updatedAtSec',
+          'contract', 'activeVersion', 'riskLimits', 'serverWrittenAt'
+        ])
+        && data.sessionId == sessionId
+        && data.uid == uid
+        && isShortStr(data.symbol, 40)
+        && data.resolution in ['15m', '1h']
+        && isUnitsStr(data.startingBalanceUnits)
+        && isUnitsStr(data.balanceUnits)
+        && isUnitsStr(data.equityUnits)
+        && isUnitsStr(data.realizedPnlUnits)
+        && isUnitsStr(data.unrealizedPnlUnits)
+        && isUnitsStr(data.marginUsedUnits)
+        && isUnitsStr(data.peakEquityUnits)
+        && isUnitsStr(data.dailyStartEquityUnits)
+        && isShortStr(data.resetTimeZone, 64)
+        && isValidId(data.parameterVersionId)
+        && data.strategyEnabled is bool
+        && data.dailyLossHalted is bool
+        && data.drawdownHalted is bool
+        && data.killSwitchActive is bool
+        && data.stale is bool
+        && isNum(data.heldOutInspectionCount)
+        && isNum(data.createdAtSec)
+        && isNum(data.updatedAtSec)
+        && data.contract is map
+        && data.activeVersion is map
+        && data.riskLimits is map
+        && data.serverWrittenAt == request.time;
+    }
+
+    function isValidPaperOrderDoc(data, clientOrderId) {
+      return data.keys().hasAll([
+          'clientOrderId', 'sessionId', 'symbol', 'side', 'type',
+          'contracts', 'reduceOnly', 'status', 'sourceKind',
+          'parameterVersionId', 'createdAtSec', 'updatedAtSec', 'serverWrittenAt'
+        ])
+        && data.clientOrderId == clientOrderId
+        && isValidId(data.sessionId)
+        && isShortStr(data.symbol, 40)
+        && data.side in ['BUY', 'SELL']
+        && data.type in ['MARKET', 'LIMIT']
+        && isNum(data.contracts) && data.contracts >= 1
+        && data.reduceOnly is bool
+        && data.status in ['OPEN', 'FILLED', 'CANCELLED', 'REJECTED']
+        && isValidId(data.parameterVersionId)
+        && isNum(data.createdAtSec)
+        && isNum(data.updatedAtSec)
+        && data.serverWrittenAt == request.time;
+    }
+
+    function isValidPaperFillDoc(data, fillId) {
+      return data.keys().hasAll([
+          'fillId', 'clientOrderId', 'sessionId', 'symbol', 'side',
+          'contracts', 'priceTicks', 'markPriceTicks', 'slippageTicks',
+          'liquidityRole', 'feeUnits', 'replayed', 'executedAtSec', 'serverWrittenAt'
+        ])
+        && data.fillId == fillId
+        && isValidId(data.clientOrderId)
+        && isValidId(data.sessionId)
+        && isShortStr(data.symbol, 40)
+        && data.side in ['BUY', 'SELL']
+        && isNum(data.contracts) && data.contracts >= 1
+        && isNum(data.priceTicks) && data.priceTicks >= 1
+        && isNum(data.markPriceTicks) && data.markPriceTicks >= 1
+        && isNum(data.slippageTicks) && data.slippageTicks >= 0
+        && data.liquidityRole in ['maker', 'taker']
+        && isUnitsStr(data.feeUnits)
+        && data.replayed is bool
+        && isNum(data.executedAtSec)
+        && data.serverWrittenAt == request.time;
+    }
+
+    function isValidPaperPositionDoc(data, posId) {
+      return data.keys().hasAll([
+          'positionId', 'sessionId', 'symbol', 'side', 'contracts',
+          'entryPriceTicks', 'markPriceTicks', 'liquidationPriceTicks',
+          'allocatedMarginUnits', 'maintenanceMarginUnits', 'unrealizedPnlUnits',
+          'accruedFundingUnits', 'entryFeesUnits', 'entrySlippageUnits',
+          'parameterVersionId', 'openedAtSec', 'updatedAtSec', 'serverWrittenAt'
+        ])
+        && data.positionId == posId
+        && isValidId(data.sessionId)
+        && isShortStr(data.symbol, 40)
+        && data.side in ['LONG', 'SHORT']
+        && isNum(data.contracts) && data.contracts >= 1
+        && isUnitsStr(data.allocatedMarginUnits)
+        && isUnitsStr(data.maintenanceMarginUnits)
+        && isUnitsStr(data.unrealizedPnlUnits)
+        && isUnitsStr(data.accruedFundingUnits)
+        && isUnitsStr(data.entryFeesUnits)
+        && isUnitsStr(data.entrySlippageUnits)
+        && isValidId(data.parameterVersionId)
+        && isNum(data.openedAtSec)
+        && isNum(data.updatedAtSec)
+        && data.serverWrittenAt == request.time;
+    }
+
+    function isValidPaperTradeDoc(data, tradeId) {
+      return data.keys().hasAll([
+          'tradeId', 'sessionId', 'symbol', 'side', 'contracts',
+          'entryPriceTicks', 'exitPriceTicks', 'grossPnlUnits',
+          'totalFeesUnits', 'totalSlippageUnits', 'fundingPnlUnits',
+          'liquidationPenaltyUnits', 'netPnlUnits', 'exitReason', 'replayed',
+          'parameterVersionId', 'entryGuardrail', 'exitGuardrail',
+          'openedAtSec', 'closedAtSec', 'serverWrittenAt'
+        ])
+        && data.tradeId == tradeId
+        && isValidId(data.sessionId)
+        && isShortStr(data.symbol, 40)
+        && data.side in ['LONG', 'SHORT']
+        && isNum(data.contracts) && data.contracts >= 1
+        && isUnitsStr(data.grossPnlUnits)
+        && isUnitsStr(data.totalFeesUnits)
+        && isUnitsStr(data.totalSlippageUnits)
+        && isUnitsStr(data.fundingPnlUnits)
+        && isUnitsStr(data.liquidationPenaltyUnits)
+        && isUnitsStr(data.netPnlUnits)
+        && data.exitReason in ['STOP', 'TARGET', 'SIGNAL', 'MANUAL', 'LIQUIDATION', 'KILL_SWITCH']
+        && data.replayed is bool
+        && isValidId(data.parameterVersionId)
+        && data.entryGuardrail is map
+        && data.exitGuardrail is map
+        && isNum(data.openedAtSec)
+        && isNum(data.closedAtSec)
+        && data.serverWrittenAt == request.time;
+    }
+
+    function isValidPaperVersionDoc(data, versionId) {
+      return data.keys().hasAll([
+          'versionId', 'label', 'createdAtSec', 'regimeOptions',
+          'guardrailThresholds', 'strategyParams', 'baseSlippageTicks',
+          'fixedHalfSpreadTicks', 'serverWrittenAt'
+        ])
+        && data.versionId == versionId
+        && isShortStr(data.label, 80)
+        && isNum(data.createdAtSec)
+        && data.regimeOptions is map
+        && data.guardrailThresholds is map
+        && data.strategyParams is map
+        && isNum(data.baseSlippageTicks)
+        && isNum(data.fixedHalfSpreadTicks)
+        && data.serverWrittenAt == request.time;
+    }
+
+    function isValidHeldOutLogDoc(data, logId) {
+      return data.keys().hasAll([
+          'logId', 'sessionId', 'parameterVersionId', 'symbol', 'resolution',
+          'inspectionIndex', 'evaluatedAtSec', 'tradeCount', 'netReturnPct',
+          'maxDrawdownPct', 'serverWrittenAt'
+        ])
+        && data.logId == logId
+        && isValidId(data.sessionId)
+        && isValidId(data.parameterVersionId)
+        && isShortStr(data.symbol, 40)
+        && data.resolution in ['15m', '1h']
+        && isNum(data.inspectionIndex) && data.inspectionIndex >= 1
+        && isNum(data.evaluatedAtSec)
+        && isNum(data.tradeCount) && data.tradeCount >= 0
+        && isNum(data.netReturnPct)
+        && isNum(data.maxDrawdownPct)
+        && data.serverWrittenAt == request.time;
+    }
+
     match /users/{uid}/decisions/{docId} {
       allow get: if isVerifiedOwner(uid) && isValidId(docId);
       allow list: if isVerifiedOwner(uid);
       allow create: if isVerifiedOwner(uid) && isValidId(docId) && isValidDecisionEntry(incoming());
       allow update: if false;
       allow delete: if isVerifiedOwner(uid) && isValidId(docId);
+    }
+
+    match /users/{uid}/paper/ledger/accounts/{sessionId} {
+      allow get, list: if isVerifiedOwner(uid);
+      allow create, update: if isVerifiedOwner(uid) && isValidId(sessionId) && isValidPaperAccountDoc(incoming(), sessionId, uid);
+      allow delete: if isVerifiedOwner(uid) && isValidId(sessionId);
+    }
+
+    match /users/{uid}/paper/ledger/orders/{clientOrderId} {
+      allow get, list: if isVerifiedOwner(uid);
+      allow create, update: if isVerifiedOwner(uid) && isValidId(clientOrderId) && isValidPaperOrderDoc(incoming(), clientOrderId);
+      allow delete: if isVerifiedOwner(uid) && isValidId(clientOrderId);
+    }
+
+    match /users/{uid}/paper/ledger/fills/{fillId} {
+      allow get, list: if isVerifiedOwner(uid);
+      allow create: if isVerifiedOwner(uid) && isValidId(fillId) && isValidPaperFillDoc(incoming(), fillId);
+      allow update, delete: if false;
+    }
+
+    match /users/{uid}/paper/ledger/positions/{posId} {
+      allow get, list: if isVerifiedOwner(uid);
+      allow create, update: if isVerifiedOwner(uid) && isValidId(posId) && isValidPaperPositionDoc(incoming(), posId);
+      allow delete: if isVerifiedOwner(uid) && isValidId(posId);
+    }
+
+    match /users/{uid}/paper/ledger/trades/{tradeId} {
+      allow get, list: if isVerifiedOwner(uid);
+      allow create: if isVerifiedOwner(uid) && isValidId(tradeId) && isValidPaperTradeDoc(incoming(), tradeId);
+      allow update, delete: if false;
+    }
+
+    match /users/{uid}/paper/ledger/versions/{versionId} {
+      allow get, list: if isVerifiedOwner(uid);
+      allow create: if isVerifiedOwner(uid) && isValidId(versionId) && isValidPaperVersionDoc(incoming(), versionId);
+      allow update, delete: if false;
+    }
+
+    match /users/{uid}/paper/ledger/heldOutLogs/{logId} {
+      allow get, list: if isVerifiedOwner(uid);
+      allow create: if isVerifiedOwner(uid) && isValidId(logId) && isValidHeldOutLogDoc(incoming(), logId);
+      allow update, delete: if false;
     }
   }
 }

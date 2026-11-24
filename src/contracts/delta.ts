@@ -43,6 +43,13 @@ export interface DeltaProductSummary {
   defaultLeverage: string | null;
   makerCommissionRate: string | null;
   takerCommissionRate: string | null;
+  initialMargin?: string | null;
+  initialMarginScalingFactor?: string | null;
+  maintenanceMargin?: string | null;
+  maintenanceMarginScalingFactor?: string | null;
+  liquidationPenaltyFactor?: string | null;
+  positionSizeLimit?: number | null;
+  rateExchangeInterval?: number | null;
   sortPriority: number | null;
 }
 
@@ -77,6 +84,7 @@ export interface DeltaTickerSnapshot {
   spotPrice: number | null;
   markBasis: number | null;
   fundingRate: number | null;
+  fundingRateRaw?: string | null;
   oi: number | null;
   oiContracts: number | null;
   oiValueUsd: number | null;

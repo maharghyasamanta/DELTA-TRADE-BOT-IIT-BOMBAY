@@ -205,6 +205,12 @@ export function useFirebaseAuth() {
     setAuthError(null);
   }, []);
 
+  const getIdToken = useCallback(async (forceRefresh = false): Promise<string | null> => {
+    const current = auth?.currentUser ?? user;
+    if (!current) return null;
+    return current.getIdToken(forceRefresh);
+  }, [user]);
+
   return {
     user,
     authReady,
@@ -213,6 +219,7 @@ export function useFirebaseAuth() {
     clearAuthError,
     signInWithGoogle,
     signOutUser,
+    getIdToken,
     isFirebaseConfigured,
     firebaseConfigError,
   };

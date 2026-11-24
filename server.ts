@@ -6,6 +6,9 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { createDeltaRouter } from './server/routes/delta.ts';
 import { createAlpacaRouter } from './server/routes/alpaca.ts';
 import { createExplainRouter } from './server/routes/explain.ts';
+import { createPaperRouter } from './server/routes/paper.ts';
+import { startPaperBrokerLoop } from './server/paper/paperStore.ts';
+import { executeWalkForwardTaskIfWorker } from './server/paper/walkForwardWorker.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,10 +82,12 @@ async function startServer(): Promise<void> {
   app.use('/api/explain', express.json({ limit: '8kb' }));
   app.use(express.json({ limit: '1mb' }));
 
-  // Public read-only market data & explain proxy routes
+  // Public read-only market data & explain proxy routes + authenticated paper broker routes
   app.use('/api', createDeltaRouter());
   app.use('/api', createAlpacaRouter());
   app.use('/api', createExplainRouter());
+  app.use('/api', createPaperRouter());
+  startPaperBrokerLoop();
 
   // Structured JSON error handler for body-parser & /api errors (prevents HTML responses)
   app.use('/api', (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -167,7 +172,9 @@ async function startServer(): Promise<void> {
   });
 }
 
-startServer().catch((err) => {
-  console.error('[RegimeSentinel] Fatal server startup error:', err);
-  process.exit(1);
-});
+if (!executeWalkForwardTaskIfWorker()) {
+  startServer().catch((err) => {
+    console.error('[DeltaTradeBot] Fatal server startup error:', err);
+    process.exit(1);
+  });
+}

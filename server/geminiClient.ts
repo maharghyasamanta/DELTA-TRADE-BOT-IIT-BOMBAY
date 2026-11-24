@@ -2,11 +2,16 @@ import { createHash } from 'node:crypto';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import {
   EXPLAIN_SYSTEM_INSTRUCTION,
+  PAPER_TRADE_EXPLAIN_SYSTEM_INSTRUCTION,
   type ExplainKeyPoint,
   type ExplainSnapshotRequest,
   type ExplainStructuredOutput,
+  type PaperTradeExplainRequest,
 } from '../src/contracts/explain.ts';
-import { validateExplainOutput } from '../src/engine/explainGuard.ts';
+import {
+  validateExplainOutput,
+  validatePaperTradeExplainOutput,
+} from '../src/engine/explainGuard.ts';
 
 export { EXPLAIN_SYSTEM_INSTRUCTION };
 
@@ -751,6 +756,211 @@ export async function explainSnapshot(snapshot: ExplainSnapshotRequest): Promise
     lastError = finalMessage;
     throw new GeminiApiError(
       finalMessage,
+      lastCaughtDetails?.status ?? 502,
+      lastCaughtDetails?.code ?? 'GEMINI_UPSTREAM_ERROR',
+      lastGuardError?.offendingNumbers,
+      lastGuardError?.matchedWords,
+    );
+  })().finally(() => {
+    inFlightExplain.delete(cacheKey);
+  });
+
+  inFlightExplain.set(cacheKey, runPromise);
+  return runPromise;
+}
+
+async function generatePaperTradeOnce(
+  ai: GoogleGenAI,
+  activeModel: string,
+  req: PaperTradeExplainRequest,
+  correctionPrompt?: string,
+  timeoutMs = EXPLAIN_TIMEOUT_MS,
+): Promise<ExplainStructuredOutput> {
+  const supportsThinkingLevel =
+    activeModel.startsWith('gemini-3') || activeModel.startsWith('gemini-4');
+
+  const userContents = correctionPrompt
+    ? `${JSON.stringify(req)}\n\n${correctionPrompt}`
+    : JSON.stringify(req);
+
+  const response = await ai.models.generateContent({
+    model: activeModel,
+    contents: userContents,
+    config: {
+      systemInstruction: PAPER_TRADE_EXPLAIN_SYSTEM_INSTRUCTION,
+      responseMimeType: 'application/json',
+      ...(supportsThinkingLevel ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } } : {}),
+      abortSignal: AbortSignal.timeout(timeoutMs),
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          summary: {
+            type: Type.STRING,
+            description:
+              'Concise historical summary (max 360 characters) using ONLY numbers present in the trade JSON.',
+          },
+          keyPoints: {
+            type: Type.ARRAY,
+            description: 'Up to 5 historical observations about entry, exit, costs, and guardrail state.',
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                label: { type: Type.STRING },
+                valueText: { type: Type.STRING },
+                meaning: { type: Type.STRING },
+              },
+              required: ['label', 'valueText', 'meaning'],
+            },
+          },
+          cautions: {
+            type: Type.ARRAY,
+            description: 'Up to 3 factual caveats (costs, slippage, sample limits, or guardrail triggers).',
+            items: { type: Type.STRING },
+          },
+          unavailable: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+          },
+        },
+        required: ['summary', 'keyPoints', 'cautions', 'unavailable'],
+      },
+    },
+  });
+
+  const rawText = (response.text ?? '').trim();
+  if (!rawText) {
+    throw new GeminiApiError(
+      'Gemini returned an empty closed-trade review response',
+      502,
+      'GEMINI_EMPTY_RESPONSE',
+    );
+  }
+
+  const explanation = parseStructuredExplanation(rawText);
+  const guard = validatePaperTradeExplainOutput(explanation, req);
+  if (!guard.ok) {
+    throw new GeminiApiError(
+      guard.message,
+      502,
+      guard.code,
+      guard.offendingNumbers,
+      guard.matchedWords,
+    );
+  }
+
+  return explanation;
+}
+
+export async function explainClosedTrade(req: PaperTradeExplainRequest): Promise<{
+  explanation: ExplainStructuredOutput;
+  model: string;
+  generatedAt: string;
+  cached: boolean;
+}> {
+  if (!GEMINI_CONFIGURED) {
+    const err = new GeminiNotConfiguredError();
+    lastError = err.message;
+    throw err;
+  }
+
+  const cacheKey = createHash('sha256')
+    .update(`paper_trade_review:${JSON.stringify(req)}`)
+    .digest('hex');
+  const cachedEntry = explainCache.get(cacheKey);
+  if (cachedEntry) {
+    return {
+      explanation: cachedEntry.explanation,
+      model: cachedEntry.model,
+      generatedAt: cachedEntry.generatedAt,
+      cached: true,
+    };
+  }
+
+  const existingFlight = inFlightExplain.get(cacheKey);
+  if (existingFlight) {
+    return existingFlight;
+  }
+
+  const runPromise = (async () => {
+    const ai = getAiClient();
+    const overallStartedAt = Date.now();
+    const modelsToTry =
+      GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL
+        ? [GEMINI_MODEL, GEMINI_FALLBACK_MODEL]
+        : [GEMINI_MODEL];
+
+    let lastCaughtDetails: GeminiExtractedError | null = null;
+    let lastGuardError: GeminiApiError | null = null;
+
+    for (const activeModel of modelsToTry) {
+      let correctionPrompt: string | undefined;
+      let usedCorrectiveRetry = false;
+
+      for (let attempt = 1; attempt <= EXPLAIN_MAX_ATTEMPTS; attempt += 1) {
+        const remainingBudgetMs = EXPLAIN_TOTAL_BUDGET_MS - (Date.now() - overallStartedAt);
+        if (remainingBudgetMs < 1_500) break;
+        const callTimeoutMs = Math.min(EXPLAIN_TIMEOUT_MS, remainingBudgetMs);
+
+        try {
+          const explanation = await generatePaperTradeOnce(
+            ai,
+            activeModel,
+            req,
+            correctionPrompt,
+            callTimeoutMs,
+          );
+          const generatedAt = new Date().toISOString();
+          explainCache.set(cacheKey, { explanation, model: activeModel, generatedAt });
+          lastSuccessAt = generatedAt;
+          lastError = null;
+          return { explanation, model: activeModel, generatedAt, cached: false };
+        } catch (err) {
+          if (err instanceof GeminiNotConfiguredError) throw err;
+
+          if (isRetryableGuardOrFormatError(err)) {
+            lastGuardError = err;
+            lastCaughtDetails = extractGeminiErrorDetails(err);
+            if (
+              !usedCorrectiveRetry &&
+              Date.now() - overallStartedAt < EXPLAIN_TOTAL_BUDGET_MS - 2_000
+            ) {
+              usedCorrectiveRetry = true;
+              correctionPrompt = buildCorrectiveInstruction(err);
+              attempt = Math.max(attempt - 1, 0);
+              continue;
+            }
+            break;
+          }
+
+          const details = extractGeminiErrorDetails(err);
+          lastCaughtDetails = details;
+          lastGuardError = null;
+          if (details.isAuthError) {
+            lastError = details.message;
+            throw new GeminiApiError(details.message, 502, details.code);
+          }
+          if (!details.retryable) break;
+          if (attempt < EXPLAIN_MAX_ATTEMPTS) {
+            const waitMs = Math.min(
+              details.retryAfterMs ?? 700 * Math.pow(2, attempt - 1),
+              EXPLAIN_MAX_RETRY_DELAY_MS,
+            );
+            if (EXPLAIN_TOTAL_BUDGET_MS - (Date.now() - overallStartedAt) - waitMs < 2_000) break;
+            await sleep(waitMs);
+          }
+        }
+      }
+    }
+
+    if (lastGuardError && lastCaughtDetails?.code === lastGuardError.code) {
+      lastError = lastGuardError.message;
+      throw lastGuardError;
+    }
+
+    const msg = lastCaughtDetails?.message ?? 'Unknown error calling Gemini API';
+    lastError = msg;
+    throw new GeminiApiError(
+      msg,
       lastCaughtDetails?.status ?? 502,
       lastCaughtDetails?.code ?? 'GEMINI_UPSTREAM_ERROR',
       lastGuardError?.offendingNumbers,

@@ -1,6 +1,7 @@
 import type {
   ExplainSnapshotRequest,
   ExplainStructuredOutput,
+  PaperTradeExplainRequest,
 } from '../contracts/explain';
 
 export const DISALLOWED_EXPLAIN_WORDS: readonly string[] = [
@@ -264,6 +265,124 @@ export function validateDisallowedContent(
     ok: matchedWords.length === 0,
     matchedWords,
   };
+}
+
+export const PAPER_TRADE_DISALLOWED_WORDS: readonly string[] = [
+  'buy',
+  'sell',
+  'order',
+  'position',
+  'guaranteed',
+  'predict',
+];
+
+const PAPER_TRADE_DISALLOWED_REGEX = new RegExp(
+  `\\b(${PAPER_TRADE_DISALLOWED_WORDS.join('|')})\\b`,
+  'gi',
+);
+
+export function extractAllowedNumbersFromPaperTrade(req: PaperTradeExplainRequest): number[] {
+  const values: number[] = [];
+  const pushNum = (v: number | null | undefined) => {
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      values.push(v);
+    }
+  };
+
+  pushNum(req.contracts);
+  pushNum(req.openedAtSec);
+  pushNum(req.closedAtSec);
+  pushNum(req.entryScore);
+  pushNum(req.entryVolZ);
+  pushNum(req.entryTrend);
+  pushNum(req.exitScore);
+  pushNum(req.exitVolZ);
+  pushNum(req.exitTrend);
+
+  const stringSources: string[] = [
+    req.symbol,
+    req.entryPriceDisplay,
+    req.exitPriceDisplay,
+    req.grossPnlDisplay,
+    req.feesDisplay,
+    req.slippageDisplay,
+    req.fundingDisplay,
+    req.liquidationPenaltyDisplay,
+    req.netPnlDisplay,
+    req.parameterVersionId,
+    ...req.entryFiredRules,
+    ...req.exitFiredRules,
+  ];
+  for (const s of stringSources) {
+    for (const tok of collectNumbersFromString(s, null)) {
+      pushNum(tok.value);
+    }
+  }
+  return values;
+}
+
+export function validatePaperTradeExplainOutput(
+  output: ExplainStructuredOutput,
+  req: PaperTradeExplainRequest,
+): ExplainGuardResult {
+  const allTexts: string[] = [
+    output.summary,
+    ...output.keyPoints.flatMap((kp) => [kp.label, kp.valueText, kp.meaning]),
+    ...output.cautions,
+    ...output.unavailable,
+  ];
+
+  const matchedSet = new Set<string>();
+  for (const text of allTexts) {
+    PAPER_TRADE_DISALLOWED_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = PAPER_TRADE_DISALLOWED_REGEX.exec(text)) !== null) {
+      matchedSet.add(match[1].toLowerCase());
+    }
+  }
+  if (matchedSet.size > 0) {
+    const matchedWords = Array.from(matchedSet);
+    return {
+      ok: false,
+      code: 'DISALLOWED_CONTENT',
+      message: `Trade review blocked: output contained disallowed directive/predictive word(s): ${matchedWords.join(', ')}`,
+      matchedWords,
+    };
+  }
+
+  const allowed = extractAllowedNumbersFromPaperTrade(req);
+  const offendingNumbers: number[] = [];
+  const offendingTokens: string[] = [];
+
+  for (const text of allTexts) {
+    // Strip formatted dates from openedAtSec and closedAtSec
+    let cleaned = text;
+    for (const ts of [req.openedAtSec, req.closedAtSec]) {
+      const iso = new Date(ts * 1000).toISOString();
+      const datePart = iso.slice(0, 10);
+      const dtMin = `${datePart} ${iso.slice(11, 16)}`;
+      const dtSec = `${datePart} ${iso.slice(11, 19)}`;
+      cleaned = cleaned.split(iso).join(' ').split(dtSec).join(' ').split(dtMin).join(' ').split(datePart).join(' ');
+    }
+    const tokens = collectNumbersFromString(cleaned, null);
+    for (const token of tokens) {
+      if (!isTokenGrounded(token, allowed)) {
+        offendingNumbers.push(token.value);
+        offendingTokens.push(token.raw);
+      }
+    }
+  }
+
+  if (offendingNumbers.length > 0) {
+    return {
+      ok: false,
+      code: 'UNGROUNDED_OUTPUT',
+      message: `Trade review blocked: ungrounded numeric value(s) detected: ${offendingTokens.join(', ')}`,
+      offendingNumbers,
+    };
+  }
+
+  return { ok: true };
 }
 
 export function validateExplainOutput(

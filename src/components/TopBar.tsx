@@ -21,8 +21,8 @@ interface TopBarProps {
   alpacaNeedsSymbolHint?: boolean;
   activeAlpacaSymbol?: string | null;
   onRefreshAlpacaStatus: () => void;
-  activeSection: 'monitor' | 'specs' | 'roadmap';
-  onNavigate: (section: 'monitor' | 'specs' | 'roadmap') => void;
+  activeSection: 'monitor' | 'specs' | 'roadmap' | 'paper';
+  onNavigate: (section: 'monitor' | 'specs' | 'roadmap' | 'paper') => void;
   authSlot?: ReactNode;
 }
 
@@ -88,7 +88,7 @@ export function TopBar({
         {/* Zone 2: Clean single-line text navigation links */}
         <nav
           aria-label="Primary sections"
-          className="order-3 flex w-full items-center gap-4 border-t border-slate-800/70 pt-2 text-xs font-medium md:order-none md:w-auto md:gap-5 md:border-t-0 md:pt-0 md:text-sm"
+          className="order-3 flex w-full flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-slate-800/70 pt-2 text-xs font-medium md:order-none md:w-auto md:gap-5 md:border-t-0 md:pt-0 md:text-sm"
         >
           <button
             type="button"
@@ -122,6 +122,17 @@ export function TopBar({
             }`}
           >
             Phase Roadmap
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('paper')}
+            className={`whitespace-nowrap shrink-0 pb-0.5 transition-colors duration-150 cursor-pointer ${
+              activeSection === 'paper'
+                ? 'text-amber-300 border-b border-amber-400'
+                : 'text-slate-400 hover:text-amber-200'
+            }`}
+          >
+            Paper Trading
           </button>
         </nav>
 
