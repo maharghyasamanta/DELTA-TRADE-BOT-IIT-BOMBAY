@@ -21,13 +21,24 @@ import type {
   PaperRestoreSnapshotPayload,
   PaperSessionState,
 } from '../contracts/paper';
-import { db, extractFirestoreErrorCode } from '../firebase';
+import {
+  db,
+  extractFirestoreErrorCode,
+  handleFirestoreError,
+  OperationType,
+} from '../firebase';
 
 const LEDGER_ROOT = ['paper', 'ledger'] as const;
 const THROTTLED_SNAPSHOT_INTERVAL_MS = 60_000;
 
 const lastAccountSyncAtMs = new Map<string, number>();
 const persistedImmutableIds = new Set<string>();
+
+function ledgerPath(uid: string, subcol: string, docId?: string): string {
+  return docId
+    ? `users/${uid}/${LEDGER_ROOT[0]}/${LEDGER_ROOT[1]}/${subcol}/${docId}`
+    : `users/${uid}/${LEDGER_ROOT[0]}/${LEDGER_ROOT[1]}/${subcol}`;
+}
 
 function ledgerCol(uid: string, subcol: string) {
   if (!db) throw new Error('Firestore is not configured');
@@ -53,13 +64,22 @@ async function createImmutableDocIfAbsent(
   const cacheKey = `${uid}:${subcol}:${docId}`;
   if (persistedImmutableIds.has(cacheKey)) return;
 
+  const path = ledgerPath(uid, subcol, docId);
   const ref = ledgerDoc(uid, subcol, docId);
+
+  let existing;
   try {
-    const existing = await getDoc(ref);
-    if (existing.exists()) {
-      persistedImmutableIds.add(cacheKey);
-      return;
-    }
+    existing = await getDoc(ref);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, path);
+  }
+
+  if (existing.exists()) {
+    persistedImmutableIds.add(cacheKey);
+    return;
+  }
+
+  try {
     await setDoc(ref, {
       ...payload,
       serverWrittenAt: serverTimestamp(),
@@ -70,7 +90,7 @@ async function createImmutableDocIfAbsent(
       persistedImmutableIds.add(cacheKey);
       return;
     }
-    throw err;
+    handleFirestoreError(err, OperationType.CREATE, path);
   }
 }
 
@@ -100,45 +120,78 @@ export async function syncPaperStateToFirestore(
   lastAccountSyncAtMs.set(state.account.sessionId, nowMs);
 
   // 1. Account snapshot doc (includes contract, activeVersion, riskLimits for clean restore)
-  await setDoc(ledgerDoc(uid, 'accounts', state.account.sessionId), {
-    ...state.account,
-    contract: state.contract,
-    activeVersion: state.activeVersion,
-    serverWrittenAt: serverTimestamp(),
-  });
+  const accountPath = ledgerPath(uid, 'accounts', state.account.sessionId);
+  try {
+    await setDoc(ledgerDoc(uid, 'accounts', state.account.sessionId), {
+      ...state.account,
+      contract: state.contract,
+      activeVersion: state.activeVersion,
+      serverWrittenAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, accountPath);
+  }
 
   // 2. Open positions & remove closed position docs
-  const existingPosSnap = await getDocs(
-    query(ledgerCol(uid, 'positions'), where('sessionId', '==', state.account.sessionId)),
-  );
+  const positionsPath = ledgerPath(uid, 'positions');
+  let existingPosSnap;
+  try {
+    existingPosSnap = await getDocs(
+      query(ledgerCol(uid, 'positions'), where('sessionId', '==', state.account.sessionId)),
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, positionsPath);
+  }
   const currentPosIds = new Set(state.openPositions.map((p) => p.positionId));
   for (const snap of existingPosSnap.docs) {
     if (!currentPosIds.has(snap.id)) {
-      await deleteDoc(snap.ref);
+      try {
+        await deleteDoc(snap.ref);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, ledgerPath(uid, 'positions', snap.id));
+      }
     }
   }
   for (const pos of state.openPositions) {
-    await setDoc(ledgerDoc(uid, 'positions', pos.positionId), {
-      ...pos,
-      serverWrittenAt: serverTimestamp(),
-    });
+    try {
+      await setDoc(ledgerDoc(uid, 'positions', pos.positionId), {
+        ...pos,
+        serverWrittenAt: serverTimestamp(),
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, ledgerPath(uid, 'positions', pos.positionId));
+    }
   }
 
   // 3. Open orders (and remove stale filled/cancelled open order docs on event)
-  const existingOrderSnap = await getDocs(
-    query(ledgerCol(uid, 'orders'), where('sessionId', '==', state.account.sessionId)),
-  );
+  const ordersPath = ledgerPath(uid, 'orders');
+  let existingOrderSnap;
+  try {
+    existingOrderSnap = await getDocs(
+      query(ledgerCol(uid, 'orders'), where('sessionId', '==', state.account.sessionId)),
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, ordersPath);
+  }
   const currentOrderIds = new Set(state.openOrders.map((o) => o.clientOrderId));
   for (const snap of existingOrderSnap.docs) {
     if (!currentOrderIds.has(snap.id)) {
-      await deleteDoc(snap.ref);
+      try {
+        await deleteDoc(snap.ref);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.DELETE, ledgerPath(uid, 'orders', snap.id));
+      }
     }
   }
   for (const ord of state.openOrders) {
-    await setDoc(ledgerDoc(uid, 'orders', ord.clientOrderId), {
-      ...ord,
-      serverWrittenAt: serverTimestamp(),
-    });
+    try {
+      await setDoc(ledgerDoc(uid, 'orders', ord.clientOrderId), {
+        ...ord,
+        serverWrittenAt: serverTimestamp(),
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, ledgerPath(uid, 'orders', ord.clientOrderId));
+    }
   }
 
   // 4. Immutable versions, fills, closedTrades, heldOutLogs
@@ -161,10 +214,15 @@ export async function recordSubmittedOrderToFirestore(
   order: PaperOrder,
 ): Promise<void> {
   if (!db) return;
-  await setDoc(ledgerDoc(uid, 'orders', order.clientOrderId), {
-    ...order,
-    serverWrittenAt: serverTimestamp(),
-  });
+  const path = ledgerPath(uid, 'orders', order.clientOrderId);
+  try {
+    await setDoc(ledgerDoc(uid, 'orders', order.clientOrderId), {
+      ...order,
+      serverWrittenAt: serverTimestamp(),
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
 }
 
 export async function loadSavedPaperSnapshotsFromFirestore(
@@ -172,17 +230,32 @@ export async function loadSavedPaperSnapshotsFromFirestore(
 ): Promise<PaperRestoreSnapshotPayload[]> {
   if (!db) return [];
 
-  const acctSnap = await getDocs(ledgerCol(uid, 'accounts'));
+  let acctSnap;
+  try {
+    acctSnap = await getDocs(ledgerCol(uid, 'accounts'));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, ledgerPath(uid, 'accounts'));
+  }
   if (acctSnap.empty) return [];
 
-  const [ordersSnap, fillsSnap, posSnap, tradesSnap, versionsSnap, heldOutSnap] = await Promise.all([
-    getDocs(ledgerCol(uid, 'orders')),
-    getDocs(ledgerCol(uid, 'fills')),
-    getDocs(ledgerCol(uid, 'positions')),
-    getDocs(ledgerCol(uid, 'trades')),
-    getDocs(ledgerCol(uid, 'versions')),
-    getDocs(ledgerCol(uid, 'heldOutLogs')),
-  ]);
+  let ordersSnap;
+  let fillsSnap;
+  let posSnap;
+  let tradesSnap;
+  let versionsSnap;
+  let heldOutSnap;
+  try {
+    [ordersSnap, fillsSnap, posSnap, tradesSnap, versionsSnap, heldOutSnap] = await Promise.all([
+      getDocs(ledgerCol(uid, 'orders')),
+      getDocs(ledgerCol(uid, 'fills')),
+      getDocs(ledgerCol(uid, 'positions')),
+      getDocs(ledgerCol(uid, 'trades')),
+      getDocs(ledgerCol(uid, 'versions')),
+      getDocs(ledgerCol(uid, 'heldOutLogs')),
+    ]);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, `users/${uid}/${LEDGER_ROOT[0]}/${LEDGER_ROOT[1]}`);
+  }
 
   const versionsById = new Map<string, PaperParameterVersion>();
   for (const d of versionsSnap.docs) {
@@ -283,13 +356,29 @@ export async function deleteSavedPaperSessionFromFirestore(
   sessionId: string,
 ): Promise<void> {
   if (!db) return;
-  await deleteDoc(ledgerDoc(uid, 'accounts', sessionId));
-  const [posSnap, ordSnap] = await Promise.all([
-    getDocs(query(ledgerCol(uid, 'positions'), where('sessionId', '==', sessionId))),
-    getDocs(query(ledgerCol(uid, 'orders'), where('sessionId', '==', sessionId))),
-  ]);
-  await Promise.all([
-    ...posSnap.docs.map((s) => deleteDoc(s.ref)),
-    ...ordSnap.docs.map((s) => deleteDoc(s.ref)),
-  ]);
+  try {
+    await deleteDoc(ledgerDoc(uid, 'accounts', sessionId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, ledgerPath(uid, 'accounts', sessionId));
+  }
+
+  let posSnap;
+  let ordSnap;
+  try {
+    [posSnap, ordSnap] = await Promise.all([
+      getDocs(query(ledgerCol(uid, 'positions'), where('sessionId', '==', sessionId))),
+      getDocs(query(ledgerCol(uid, 'orders'), where('sessionId', '==', sessionId))),
+    ]);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, `users/${uid}/${LEDGER_ROOT[0]}/${LEDGER_ROOT[1]}`);
+  }
+
+  try {
+    await Promise.all([
+      ...posSnap.docs.map((s) => deleteDoc(s.ref)),
+      ...ordSnap.docs.map((s) => deleteDoc(s.ref)),
+    ]);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `users/${uid}/${LEDGER_ROOT[0]}/${LEDGER_ROOT[1]}`);
+  }
 }

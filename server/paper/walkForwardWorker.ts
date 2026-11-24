@@ -19,10 +19,14 @@ export interface WalkForwardWorkerPayload {
   nowSec: number;
 }
 
+let workerTaskHandled = false;
+
 export function executeWalkForwardTaskIfWorker(): boolean {
   if (isMainThread) return false;
   const data = workerData as Partial<WalkForwardWorkerPayload> | null;
   if (!data || data.kind !== 'WALK_FORWARD') return false;
+  if (workerTaskHandled) return true;
+  workerTaskHandled = true;
 
   try {
     const report = runFocusedWalkForwardSearch({

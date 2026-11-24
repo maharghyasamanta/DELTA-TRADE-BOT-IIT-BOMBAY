@@ -182,7 +182,25 @@ export function AlpacaBarsChart({
       return;
     }
 
-    const ohlcData: CandlestickData<UTCTimestamp>[] = candles.map((c) => ({
+    const byTime = new Map<number, NormalizedCandle>();
+    for (const c of candles) {
+      if (
+        Number.isFinite(c.time) &&
+        c.time > 0 &&
+        Number.isFinite(c.open) &&
+        Number.isFinite(c.high) &&
+        Number.isFinite(c.low) &&
+        Number.isFinite(c.close)
+      ) {
+        byTime.set(c.time, {
+          ...c,
+          volume: Number.isFinite(c.volume) ? c.volume : 0,
+        });
+      }
+    }
+    const safeCandles = Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+
+    const ohlcData: CandlestickData<UTCTimestamp>[] = safeCandles.map((c) => ({
       time: c.time as UTCTimestamp,
       open: c.open,
       high: c.high,
@@ -190,7 +208,7 @@ export function AlpacaBarsChart({
       close: c.close,
     }));
 
-    const volData: HistogramData<UTCTimestamp>[] = candles.map((c) => ({
+    const volData: HistogramData<UTCTimestamp>[] = safeCandles.map((c) => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
       color: c.close >= c.open ? 'rgba(38, 166, 154, 0.4)' : 'rgba(239, 83, 80, 0.4)',
@@ -199,7 +217,7 @@ export function AlpacaBarsChart({
     candleSeriesRef.current.setData(ohlcData);
     volumeSeriesRef.current.setData(volData);
 
-    if (candles.length > 0) {
+    if (safeCandles.length > 0) {
       chartRef.current.timeScale().fitContent();
     }
   }, [candles, symbol, error]);

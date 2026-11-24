@@ -1,7 +1,7 @@
 import { Sparkles } from 'lucide-react';
 import type { ExplainClosedTradeResponse, PaperClosedTrade, PaperSessionState } from '../../contracts/paper';
 import { formatFixedUnits, stringToUnits } from '../../engine/decimal';
-import { formatTimestamp } from '../../utils/format';
+import { formatTimestamp, getTickDecimals } from '../../utils/format';
 
 interface PaperJournalAndReviewProps {
   session: PaperSessionState;
@@ -17,9 +17,7 @@ export function PaperJournalAndReview({
   onExplainTrade,
 }: PaperJournalAndReviewProps) {
   const tickNum = Number(session.contract.tickSizeStr) || 0.5;
-  const decimals = session.contract.tickSizeStr.includes('.')
-    ? session.contract.tickSizeStr.split('.')[1].length
-    : 0;
+  const decimals = getTickDecimals(session.contract.tickSizeStr);
   const fmtTicks = (ticks: number) => (ticks * tickNum).toFixed(decimals);
   const fmtUsd = (units: string, d = 2) => formatFixedUnits(stringToUnits(units), d);
 

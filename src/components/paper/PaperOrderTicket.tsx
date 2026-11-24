@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { OctagonAlert, Play, Square } from 'lucide-react';
 import type { PaperSessionState } from '../../contracts/paper';
+import { getTickDecimals } from '../../utils/format';
 
 interface PaperOrderTicketProps {
   session: PaperSessionState;
@@ -38,6 +39,7 @@ export function PaperOrderTicket({
   onResetHalts,
 }: PaperOrderTicketProps) {
   const tickNum = Number(session.contract.tickSizeStr) || 0.5;
+  const priceDecimals = getTickDecimals(session.contract.tickSizeStr);
   const markPrice = session.account.lastMarkPriceTicks
     ? session.account.lastMarkPriceTicks * tickNum
     : null;
@@ -51,6 +53,10 @@ export function PaperOrderTicket({
   const [reduceOnly, setReduceOnly] = useState(false);
   const [tzInput, setTzInput] = useState(session.account.resetTimeZone);
   const [clientKeyCounter, setClientKeyCounter] = useState(1);
+
+  useEffect(() => {
+    setTzInput(session.account.resetTimeZone);
+  }, [session.account.sessionId, session.account.resetTimeZone]);
 
   const toTicks = (valStr: string): number | null => {
     const trimmed = valStr.trim();
@@ -95,7 +101,7 @@ export function PaperOrderTicket({
             {session.contract.rateExchangeIntervalSource === 'fallback_28800s'
               ? 'fallback 28,800s'
               : 'Delta API'}
-            ){markPrice !== null ? ` · Mark ~$${markPrice.toFixed(2)}` : ''}
+            ){markPrice !== null ? ` · Mark ~$${markPrice.toFixed(priceDecimals)}` : ''}
           </p>
         </div>
 
@@ -206,7 +212,7 @@ export function PaperOrderTicket({
               id="paper-limit-price"
               type="number"
               step={session.contract.tickSizeStr}
-              placeholder={markPrice ? markPrice.toFixed(1) : '60000'}
+              placeholder={markPrice ? markPrice.toFixed(priceDecimals) : '60000'}
               value={limitPriceStr}
               onChange={(e) => setLimitPriceStr(e.target.value)}
               className="w-full rounded border border-slate-700/80 bg-[#0B1120] px-2.5 py-1.5 font-mono text-xs text-slate-100 tabular-nums"

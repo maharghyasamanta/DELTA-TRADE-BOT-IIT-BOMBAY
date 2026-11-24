@@ -22,20 +22,23 @@ import type {
   DeltaCandle,
 } from '../contracts/delta';
 import { formatNumber, formatPrice, formatTimestamp, getTickDecimals } from '../utils/format';
+import {
+  LOOKBACK_OPTIONS,
+  DELTA_CLIENT_RESOLUTION_SECONDS,
+  DELTA_MAX_CANDLES_PER_QUERY,
+  isLookbackAllowedForResolution,
+  clampLookbackIdForResolution,
+  type LookbackOption,
+} from '../utils/deltaLookback';
 
-export type LookbackOption = {
-  id: string;
-  label: string;
-  seconds: number;
+export {
+  LOOKBACK_OPTIONS,
+  DELTA_CLIENT_RESOLUTION_SECONDS,
+  DELTA_MAX_CANDLES_PER_QUERY,
+  isLookbackAllowedForResolution,
+  clampLookbackIdForResolution,
+  type LookbackOption,
 };
-
-export const LOOKBACK_OPTIONS: readonly LookbackOption[] = [
-  { id: '6h', label: '6H', seconds: 6 * 3600 },
-  { id: '24h', label: '24H', seconds: 24 * 3600 },
-  { id: '3d', label: '3D', seconds: 3 * 86_400 },
-  { id: '7d', label: '7D', seconds: 7 * 86_400 },
-  { id: '30d', label: '30D', seconds: 30 * 86_400 },
-] as const;
 
 export const CHART_RESOLUTIONS: readonly CandleResolution[] = [
   '1m',
@@ -45,6 +48,26 @@ export const CHART_RESOLUTIONS: readonly CandleResolution[] = [
   '4h',
   '1d',
 ] as const;
+
+function sanitizeChartCandles(raw: readonly DeltaCandle[]): DeltaCandle[] {
+  const byTime = new Map<number, DeltaCandle>();
+  for (const c of raw) {
+    if (
+      Number.isFinite(c.time) &&
+      c.time > 0 &&
+      Number.isFinite(c.open) &&
+      Number.isFinite(c.high) &&
+      Number.isFinite(c.low) &&
+      Number.isFinite(c.close)
+    ) {
+      byTime.set(c.time, {
+        ...c,
+        volume: Number.isFinite(c.volume) ? c.volume : 0,
+      });
+    }
+  }
+  return Array.from(byTime.values()).sort((a, b) => a.time - b.time);
+}
 
 interface CandleChartPanelProps {
   symbol: string | null;
@@ -211,7 +234,9 @@ export function CandleChartPanel({
       return;
     }
 
-    const ohlcData: CandlestickData<UTCTimestamp>[] = candles.map((c) => ({
+    const safeCandles = sanitizeChartCandles(candles);
+
+    const ohlcData: CandlestickData<UTCTimestamp>[] = safeCandles.map((c) => ({
       time: c.time as UTCTimestamp,
       open: c.open,
       high: c.high,
@@ -219,7 +244,7 @@ export function CandleChartPanel({
       close: c.close,
     }));
 
-    const volData: HistogramData<UTCTimestamp>[] = candles.map((c) => ({
+    const volData: HistogramData<UTCTimestamp>[] = safeCandles.map((c) => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
       color: c.close >= c.open ? 'rgba(22, 163, 74, 0.35)' : 'rgba(220, 38, 38, 0.35)',
@@ -227,9 +252,9 @@ export function CandleChartPanel({
 
     candleSeriesRef.current.setData(ohlcData);
     volumeSeriesRef.current.setData(volData);
-    lastBarTimeRef.current = candles.length > 0 ? candles[candles.length - 1].time : 0;
+    lastBarTimeRef.current = safeCandles.length > 0 ? safeCandles[safeCandles.length - 1].time : 0;
 
-    if (candles.length > 0) {
+    if (safeCandles.length > 0) {
       chartRef.current.timeScale().fitContent();
     }
   }, [candles, symbol]);
@@ -237,6 +262,16 @@ export function CandleChartPanel({
   // Merge streaming WebSocket candle ticks
   useEffect(() => {
     if (!liveCandle || !candleSeriesRef.current || !volumeSeriesRef.current) {
+      return;
+    }
+    if (
+      !Number.isFinite(liveCandle.time) ||
+      liveCandle.time <= 0 ||
+      !Number.isFinite(liveCandle.open) ||
+      !Number.isFinite(liveCandle.high) ||
+      !Number.isFinite(liveCandle.low) ||
+      !Number.isFinite(liveCandle.close)
+    ) {
       return;
     }
     if (liveCandle.time < lastBarTimeRef.current) {
@@ -254,7 +289,7 @@ export function CandleChartPanel({
 
     volumeSeriesRef.current.update({
       time: liveCandle.time as UTCTimestamp,
-      value: liveCandle.volume,
+      value: Number.isFinite(liveCandle.volume) ? liveCandle.volume : 0,
       color:
         liveCandle.close >= liveCandle.open
           ? 'rgba(22, 163, 74, 0.35)'
@@ -318,20 +353,31 @@ export function CandleChartPanel({
 
           {/* Lookback Window Buttons */}
           <div className="flex items-center gap-0.5 rounded-md border border-slate-800 bg-[#0B1120] p-0.5">
-            {LOOKBACK_OPTIONS.map((lb) => (
-              <button
-                key={lb.id}
-                type="button"
-                onClick={() => onChangeLookback(lb.id)}
-                className={`rounded px-2 py-1 font-mono text-xs font-medium transition-colors duration-150 cursor-pointer ${
-                  lookbackId === lb.id
-                    ? 'bg-slate-800 text-slate-100'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {lb.label}
-              </button>
-            ))}
+            {LOOKBACK_OPTIONS.map((lb) => {
+              const allowed = isLookbackAllowedForResolution(resolution, lb.seconds);
+              return (
+                <button
+                  key={lb.id}
+                  type="button"
+                  disabled={!allowed}
+                  title={
+                    allowed
+                      ? `${lb.label} lookback window`
+                      : `${lb.label} exceeds Delta's 4,000-candle limit for ${resolution}`
+                  }
+                  onClick={() => onChangeLookback(lb.id)}
+                  className={`rounded px-2 py-1 font-mono text-xs font-medium transition-colors duration-150 ${
+                    !allowed
+                      ? 'text-slate-600 cursor-not-allowed opacity-50'
+                      : lookbackId === lb.id
+                        ? 'bg-slate-800 text-slate-100 cursor-pointer'
+                        : 'text-slate-400 hover:text-slate-200 cursor-pointer'
+                  }`}
+                >
+                  {lb.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

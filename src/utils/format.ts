@@ -1,6 +1,17 @@
 export function getTickDecimals(tickSize?: string | number | null): number {
   if (tickSize === null || tickSize === undefined) return 2;
   const str = String(tickSize).trim();
+  if (!str) return 2;
+  const sciMatch = /^([+-]?\d+(?:\.\d+)?)[eE]([+-]?\d+)$/.exec(str);
+  if (sciMatch) {
+    const mantissaFrac = sciMatch[1].includes('.')
+      ? sciMatch[1].split('.')[1].replace(/0+$/, '').length
+      : 0;
+    const exponent = Number(sciMatch[2]);
+    if (Number.isFinite(exponent)) {
+      return Math.min(Math.max(mantissaFrac - exponent, 0), 8);
+    }
+  }
   const dotIdx = str.indexOf('.');
   if (dotIdx === -1) return 0;
   const trimmed = str.slice(dotIdx + 1).replace(/0+$/, '');

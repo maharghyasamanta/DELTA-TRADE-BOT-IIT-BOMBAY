@@ -33,6 +33,7 @@ import {
   recordSubmittedOrderToFirestore,
   syncPaperStateToFirestore,
 } from '../services/paperPersistence';
+import { formatFirestoreErrorForUi } from '../firebase';
 
 export function usePaperTrading(params: {
   user: User | null;
@@ -135,7 +136,7 @@ export function usePaperTrading(params: {
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load paper trading sessions');
+      setError(formatFirestoreErrorForUi(err).message || 'Failed to load paper trading sessions');
     } finally {
       setLoading(false);
     }
@@ -151,15 +152,16 @@ export function usePaperTrading(params: {
     }
   }, [active, hydrateAndRestore, user]);
 
+  const currentSessionId = activeSession?.account.sessionId ?? null;
+
   // Live mark-price polling every 12s while Paper tab is active (writes Firestore at most every 60s!)
   useEffect(() => {
-    if (!active || !user || !activeSession) return;
-    const sessionId = activeSession.account.sessionId;
+    if (!active || !user || !currentSessionId) return;
     const timer = setInterval(() => {
       void (async () => {
         try {
           const token = await requireToken();
-          const refreshed = await getPaperSessionApi(token, sessionId);
+          const refreshed = await getPaperSessionApi(token, currentSessionId);
           upsertSession(refreshed);
           await syncPaperStateToFirestore(user.uid, refreshed, { forceEventWrite: false });
         } catch {
@@ -168,7 +170,7 @@ export function usePaperTrading(params: {
       })();
     }, 12_000);
     return () => clearInterval(timer);
-  }, [active, activeSession, requireToken, upsertSession, user]);
+  }, [active, currentSessionId, requireToken, upsertSession, user]);
 
   const refreshAnalytics = useCallback(
     async (sessionId?: string) => {
@@ -209,7 +211,7 @@ export function usePaperTrading(params: {
         upsertSession(created);
         await syncPaperStateToFirestore(user.uid, created, { forceEventWrite: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to create paper session');
+        setError(formatFirestoreErrorForUi(err).message || 'Failed to create paper session');
       } finally {
         setBusyAction(null);
       }
@@ -229,7 +231,7 @@ export function usePaperTrading(params: {
         setSessions((prev) => prev.filter((s) => s.account.sessionId !== sessionId));
         setActiveSessionId((prev) => (prev === sessionId ? null : prev));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to delete session');
+        setError(formatFirestoreErrorForUi(err).message || 'Failed to delete session');
       } finally {
         setBusyAction(null);
       }
@@ -262,7 +264,7 @@ export function usePaperTrading(params: {
         }
         return res;
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to submit paper order');
+        setError(formatFirestoreErrorForUi(err).message || 'Failed to submit paper order');
         return null;
       } finally {
         setBusyAction(null);
@@ -286,7 +288,7 @@ export function usePaperTrading(params: {
         upsertSession(res.state);
         await syncPaperStateToFirestore(user.uid, res.state, { forceEventWrite: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to cancel order');
+        setError(formatFirestoreErrorForUi(err).message || 'Failed to cancel order');
       } finally {
         setBusyAction(null);
       }
@@ -304,7 +306,7 @@ export function usePaperTrading(params: {
       upsertSession(res.state);
       await syncPaperStateToFirestore(user.uid, res.state, { forceEventWrite: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kill switch failed');
+      setError(formatFirestoreErrorForUi(err).message || 'Kill switch failed');
     } finally {
       setBusyAction(null);
     }
@@ -334,7 +336,7 @@ export function usePaperTrading(params: {
         upsertSession(updated);
         await syncPaperStateToFirestore(user.uid, updated, { forceEventWrite: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update settings');
+        setError(formatFirestoreErrorForUi(err).message || 'Failed to update settings');
       } finally {
         setBusyAction(null);
       }
@@ -366,30 +368,21 @@ export function usePaperTrading(params: {
   const evaluateHeldOut = useCallback(
     async (version: PaperParameterVersion, lookbackBars: number) => {
       if (!user || !activeSession) return;
+      const targetSessionId = activeSession.account.sessionId;
       setBusyAction('Evaluating held-out split');
       setError(null);
       try {
         const token = await requireToken();
-        const res = await evaluateHeldOutApi(token, activeSession.account.sessionId, {
+        const res = await evaluateHeldOutApi(token, targetSessionId, {
           version,
           lookbackBars,
         });
         setHeldOutResult({ summary: res.summary, log: res.log });
-        const nextLogs = [res.log, ...activeSession.heldOutLogs];
-        const nextState: PaperSessionState = {
-          ...activeSession,
-          account: {
-            ...res.account,
-            heldOutInspectionCount: nextLogs.filter(
-              (l) => l.sessionId === activeSession.account.sessionId,
-            ).length,
-          },
-          heldOutLogs: nextLogs,
-        };
-        upsertSession(nextState);
-        await syncPaperStateToFirestore(user.uid, nextState, { forceEventWrite: true });
+        const refreshed = await getPaperSessionApi(token, targetSessionId);
+        upsertSession(refreshed);
+        await syncPaperStateToFirestore(user.uid, refreshed, { forceEventWrite: true });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Held-out evaluation failed');
+        setError(formatFirestoreErrorForUi(err).message || 'Held-out evaluation failed');
       } finally {
         setBusyAction(null);
       }

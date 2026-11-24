@@ -1,7 +1,7 @@
 import { XCircle } from 'lucide-react';
 import type { PaperSessionState } from '../../contracts/paper';
 import { formatFixedUnits, stringToUnits } from '../../engine/decimal';
-import { formatTimestamp } from '../../utils/format';
+import { formatTimestamp, getTickDecimals } from '../../utils/format';
 
 interface PaperPositionsOrdersPanelProps {
   session: PaperSessionState;
@@ -15,9 +15,7 @@ export function PaperPositionsOrdersPanel({
   onCancelOrder,
 }: PaperPositionsOrdersPanelProps) {
   const tickNum = Number(session.contract.tickSizeStr) || 0.5;
-  const priceDecimals = session.contract.tickSizeStr.includes('.')
-    ? session.contract.tickSizeStr.split('.')[1].length
-    : 0;
+  const priceDecimals = getTickDecimals(session.contract.tickSizeStr);
   const fmtTicks = (ticks: number | null) =>
     ticks !== null ? (ticks * tickNum).toFixed(priceDecimals) : '—';
   const fmtUsd = (units: string) => formatFixedUnits(stringToUnits(units), 2);

@@ -15,6 +15,19 @@ export interface LogDecisionPayload {
   candleCount: number;
 }
 
+function finiteOrNull(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function finiteOrFallback(value: number | null | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function nonNegativeInt(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.floor(value));
+}
+
 export function sanitizeDecisionPayload(payload: LogDecisionPayload) {
   const cleanedRules = payload.firedRules
     .map((r) => r.trim().slice(0, 64))
@@ -25,6 +38,12 @@ export function sanitizeDecisionPayload(payload: LogDecisionPayload) {
     .filter((r) => r.length >= 1)
     .slice(0, 16);
 
+  const rawLastCandle = finiteOrNull(payload.lastCandleTime);
+  const lastCandleTime = rawLastCandle !== null && rawLastCandle >= 0 ? rawLastCandle : null;
+  const rawAgeBars = finiteOrNull(payload.inputs.lastChangePointAgeBars);
+  const lastChangePointAgeBars =
+    rawAgeBars !== null && rawAgeBars >= 0 ? Math.floor(rawAgeBars) : null;
+
   return {
     source: payload.source,
     symbol: (payload.symbol.trim() || 'UNKNOWN').slice(0, 40),
@@ -33,22 +52,22 @@ export function sanitizeDecisionPayload(payload: LogDecisionPayload) {
     firedRules: cleanedRules.length > 0 ? cleanedRules : ['UNSPECIFIED'],
     reasons: cleanedReasons.length > 0 ? cleanedReasons : ['No reason recorded'],
     inputs: {
-      score: payload.inputs.score,
-      volZ: payload.inputs.volZ,
-      trend: payload.inputs.trend,
-      changePointsInWindow: Math.max(0, payload.inputs.changePointsInWindow),
-      lastChangePointAgeBars: payload.inputs.lastChangePointAgeBars,
+      score: finiteOrNull(payload.inputs.score),
+      volZ: finiteOrNull(payload.inputs.volZ),
+      trend: finiteOrNull(payload.inputs.trend),
+      changePointsInWindow: nonNegativeInt(payload.inputs.changePointsInWindow),
+      lastChangePointAgeBars,
     },
     thresholdsUsed: {
-      pauseScore: payload.thresholdsUsed.pauseScore,
-      pauseVolZ: payload.thresholdsUsed.pauseVolZ,
-      pauseChangePointAgeBars: payload.thresholdsUsed.pauseChangePointAgeBars,
-      reduceScore: payload.thresholdsUsed.reduceScore,
-      reduceVolZ: payload.thresholdsUsed.reduceVolZ,
-      reduceChangePointAgeBars: payload.thresholdsUsed.reduceChangePointAgeBars,
+      pauseScore: finiteOrFallback(payload.thresholdsUsed.pauseScore, 80),
+      pauseVolZ: finiteOrFallback(payload.thresholdsUsed.pauseVolZ, 2.5),
+      pauseChangePointAgeBars: nonNegativeInt(payload.thresholdsUsed.pauseChangePointAgeBars),
+      reduceScore: finiteOrFallback(payload.thresholdsUsed.reduceScore, 60),
+      reduceVolZ: finiteOrFallback(payload.thresholdsUsed.reduceVolZ, 1.5),
+      reduceChangePointAgeBars: nonNegativeInt(payload.thresholdsUsed.reduceChangePointAgeBars),
     },
-    lastCandleTime: payload.lastCandleTime,
-    candleCount: Math.max(0, payload.candleCount),
+    lastCandleTime,
+    candleCount: nonNegativeInt(payload.candleCount),
   };
 }
 

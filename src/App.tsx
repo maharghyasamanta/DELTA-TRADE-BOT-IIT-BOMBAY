@@ -20,6 +20,9 @@ import { AlpacaQuotePanel } from './components/AlpacaQuotePanel';
 import { AuthStatusControl } from './components/AuthStatusControl';
 import {
   CandleChartPanel,
+  clampLookbackIdForResolution,
+  DELTA_CLIENT_RESOLUTION_SECONDS,
+  DELTA_MAX_CANDLES_PER_QUERY,
   LOOKBACK_OPTIONS,
 } from './components/CandleChartPanel';
 import { ContractSpecsPanel } from './components/ContractSpecsPanel';
@@ -147,54 +150,59 @@ export default function App() {
 
   const hasAutoPingedAlpacaRef = useRef(false);
 
-  const loadAlpacaStatus = useCallback(async () => {
-    setIsCheckingAlpaca(true);
-    try {
-      const status = await syncAlpacaStatusOnly();
-      if (
-        status &&
-        status.configured &&
-        status.lastSuccessAt === null &&
-        status.lastError === null &&
-        !hasAutoPingedAlpacaRef.current
-      ) {
-        hasAutoPingedAlpacaRef.current = true;
-        try {
-          const pingRes = await pingAlpaca();
-          await syncAlpacaStatusOnly();
-          setAlpacaLiveError(null);
-          setAlpacaLiveSuccessAt(pingRes.fetchedAt);
-        } catch (err) {
-          const errState: AlpacaLiveErrorState =
-            err instanceof ProxyRequestError
-              ? {
-                  status: err.status,
-                  code: err.code,
-                  message: err.message,
-                  timestamp: err.timestamp,
-                }
-              : {
-                  status: null,
-                  code: null,
-                  message: err instanceof Error ? err.message : 'Alpaca ping failed',
-                  timestamp: new Date().toISOString(),
-                };
-          await syncAlpacaStatusOnly();
-          setAlpacaLiveSuccessAt(null);
-          setAlpacaLiveError(errState);
+  const loadAlpacaStatus = useCallback(
+    async (options: { allowAutoPing?: boolean } = {}) => {
+      const allowAutoPing = Boolean(options.allowAutoPing);
+      setIsCheckingAlpaca(true);
+      try {
+        const status = await syncAlpacaStatusOnly();
+        if (
+          allowAutoPing &&
+          status &&
+          status.configured &&
+          status.lastSuccessAt === null &&
+          status.lastError === null &&
+          !hasAutoPingedAlpacaRef.current
+        ) {
+          hasAutoPingedAlpacaRef.current = true;
+          try {
+            const pingRes = await pingAlpaca();
+            await syncAlpacaStatusOnly();
+            setAlpacaLiveError(null);
+            setAlpacaLiveSuccessAt(pingRes.fetchedAt);
+          } catch (err) {
+            const errState: AlpacaLiveErrorState =
+              err instanceof ProxyRequestError
+                ? {
+                    status: err.status,
+                    code: err.code,
+                    message: err.message,
+                    timestamp: err.timestamp,
+                  }
+                : {
+                    status: null,
+                    code: null,
+                    message: err instanceof Error ? err.message : 'Alpaca ping failed',
+                    timestamp: new Date().toISOString(),
+                  };
+            await syncAlpacaStatusOnly();
+            setAlpacaLiveSuccessAt(null);
+            setAlpacaLiveError(errState);
+          }
+          return;
         }
-        return;
-      }
 
-      if (status && status.lastError === null && status.lastSuccessAt !== null) {
-        setAlpacaLiveError(null);
-      } else if (status && status.lastError !== null) {
-        setAlpacaLiveSuccessAt(null);
+        if (status && status.lastError === null && status.lastSuccessAt !== null) {
+          setAlpacaLiveError(null);
+        } else if (status && status.lastError !== null) {
+          setAlpacaLiveSuccessAt(null);
+        }
+      } finally {
+        setIsCheckingAlpaca(false);
       }
-    } finally {
-      setIsCheckingAlpaca(false);
-    }
-  }, [syncAlpacaStatusOnly]);
+    },
+    [syncAlpacaStatusOnly],
+  );
 
   const handleCheckAlpacaBadge = useCallback(async () => {
     if (alpacaStatus && !alpacaStatus.configured) {
@@ -348,8 +356,10 @@ export default function App() {
       setCandlesError(null);
       setLiveCandle(null);
 
-      const lookbackSec =
+      const rawLookbackSec =
         LOOKBACK_OPTIONS.find((opt) => opt.id === lbId)?.seconds ?? 24 * 3600;
+      const maxSpanSec = DELTA_MAX_CANDLES_PER_QUERY * DELTA_CLIENT_RESOLUTION_SECONDS[res];
+      const lookbackSec = Math.min(rawLookbackSec, maxSpanSec);
       const end = Math.floor(Date.now() / 1000);
       const start = end - lookbackSec;
 
@@ -387,12 +397,12 @@ export default function App() {
   // Initial load + 30s health polling (Delta + Alpaca + Explain)
   useEffect(() => {
     void loadHealth();
-    void loadAlpacaStatus();
+    void loadAlpacaStatus({ allowAutoPing: false });
     void loadExplainStatus();
     void loadProducts();
     const timer = setInterval(() => {
       void loadHealth();
-      void loadAlpacaStatus();
+      void loadAlpacaStatus({ allowAutoPing: false });
       void loadExplainStatus();
     }, 30_000);
     return () => clearInterval(timer);
@@ -401,9 +411,17 @@ export default function App() {
   const handleChangeDataSource = useCallback(
     (nextSource: MarketDataSource) => {
       setDataSource(nextSource);
-      void loadAlpacaStatus();
+      void loadAlpacaStatus({ allowAutoPing: nextSource === 'alpaca' });
     },
     [loadAlpacaStatus],
+  );
+
+  const handleChangeResolution = useCallback(
+    (nextRes: CandleResolution) => {
+      setResolution(nextRes);
+      setLookbackId((prev) => clampLookbackIdForResolution(nextRes, prev));
+    },
+    [],
   );
 
   const handleSelectAlpacaSymbol = useCallback((symbol: string) => {
@@ -715,7 +733,7 @@ export default function App() {
                       symbol={selectedSymbol}
                       tickSize={selectedProduct?.tickSize ?? ticker?.tickSize ?? null}
                       resolution={resolution}
-                      onChangeResolution={setResolution}
+                      onChangeResolution={handleChangeResolution}
                       lookbackId={lookbackId}
                       onChangeLookback={setLookbackId}
                       basis={basis}

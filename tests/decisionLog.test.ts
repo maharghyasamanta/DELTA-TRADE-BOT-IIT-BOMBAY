@@ -99,3 +99,42 @@ test('formatFirestoreErrorForUi extracts code and clean error message without le
   assert.equal(indexErr.code, 'failed-precondition');
   assert.ok(indexErr.message.includes('index setup in Firebase Console'));
 });
+
+test('sanitizeDecisionPayload coerces NaN and Infinity numbers to safe Firestore-compatible values', () => {
+  const sanitized = sanitizeDecisionPayload({
+    source: 'Delta',
+    symbol: 'BTCUSD',
+    timeframe: '15m',
+    decision: 'NO_DECISION',
+    firedRules: ['INSUFFICIENT_DATA'],
+    reasons: ['Waiting for warmup'],
+    inputs: {
+      score: Number.NaN,
+      volZ: Number.POSITIVE_INFINITY,
+      trend: Number.NEGATIVE_INFINITY,
+      changePointsInWindow: Number.NaN,
+      lastChangePointAgeBars: Number.POSITIVE_INFINITY,
+    },
+    thresholdsUsed: {
+      pauseScore: Number.NaN,
+      pauseVolZ: Number.POSITIVE_INFINITY,
+      pauseChangePointAgeBars: Number.NaN,
+      reduceScore: 60,
+      reduceVolZ: 1.5,
+      reduceChangePointAgeBars: 8,
+    },
+    lastCandleTime: Number.NaN,
+    candleCount: Number.POSITIVE_INFINITY,
+  });
+
+  assert.equal(sanitized.inputs.score, null);
+  assert.equal(sanitized.inputs.volZ, null);
+  assert.equal(sanitized.inputs.trend, null);
+  assert.equal(sanitized.inputs.changePointsInWindow, 0);
+  assert.equal(sanitized.inputs.lastChangePointAgeBars, null);
+  assert.equal(sanitized.thresholdsUsed.pauseScore, 80);
+  assert.equal(sanitized.thresholdsUsed.pauseVolZ, 2.5);
+  assert.equal(sanitized.thresholdsUsed.pauseChangePointAgeBars, 0);
+  assert.equal(sanitized.lastCandleTime, null);
+  assert.equal(sanitized.candleCount, 0);
+});

@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, type Auth } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { doc, getDocFromServer, getFirestore, type Firestore } from 'firebase/firestore';
 
 export enum OperationType {
   CREATE = 'create',
@@ -104,6 +104,21 @@ export const firebaseConfigError = isFirebaseConfigured
   : 'Firebase not configured — provision firebase-applet-config.json or set VITE_FIREBASE_* env vars.';
 
 export { auth, db, googleProvider };
+
+async function testConnection(): Promise<void> {
+  if (!db) return;
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration.');
+    }
+  }
+}
+
+if (db && typeof window !== 'undefined') {
+  void testConnection();
+}
 
 import {
   extractFirestoreErrorCode,

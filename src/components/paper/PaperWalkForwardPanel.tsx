@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Cpu, Eye } from 'lucide-react';
 import type {
   HeldOutEvaluationLog,
@@ -31,6 +31,10 @@ export function PaperWalkForwardPanel({
     String(session.activeVersion.fixedHalfSpreadTicks || 2),
   );
   const [lookbackBars, setLookbackBars] = useState('720');
+
+  useEffect(() => {
+    setHalfSpreadTicks(String(session.activeVersion.fixedHalfSpreadTicks || 2));
+  }, [session.account.sessionId, session.activeVersion.fixedHalfSpreadTicks]);
 
   const inspectionCount = session.heldOutLogs.filter(
     (l) => l.sessionId === session.account.sessionId,

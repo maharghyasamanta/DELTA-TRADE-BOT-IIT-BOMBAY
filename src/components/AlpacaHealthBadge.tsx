@@ -83,7 +83,7 @@ export function AlpacaHealthBadge({
         ? `Source: Alpaca · Last success: ${successLabel} · Click to run a live latest-trade check for ${activeSymbol}`
         : `Source: Alpaca · Last success: ${successLabel} · Click to ping SPY`;
     } else {
-      label = 'Alpaca Configured — checking connection…';
+      label = 'Alpaca Configured · Click to check';
       toneClass = 'text-slate-300 border-slate-700/80 bg-slate-900/80';
       StatusIcon = Activity;
       tooltip = activeSymbol
