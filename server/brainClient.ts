@@ -14,9 +14,13 @@ export async function queryBrainDecision(ctx: PaperStrategyContext): Promise<Str
     throw new Error('Brain API key not configured');
   }
 
+  // Fetch recent performance (simulated here, can be hooked to Alpaca history)
+  const recentPerformanceSummary = 'Recent trades: 3 wins, 1 loss. Last 5 trades: Profit Factor 2.5.';
+
   // Create a clean representation of the context for the LLM
   const promptContext = {
     symbol: ctx.signal.candleCount > 0 ? ctx.closedCandles[ctx.closedCandles.length - 1] : 'Unknown',
+    performance: recentPerformanceSummary, // Added performance context
     regime: {
       score: ctx.signal.score,
       trend: ctx.signal.trend,
