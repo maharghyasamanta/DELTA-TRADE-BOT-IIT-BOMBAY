@@ -21,8 +21,8 @@ interface TopBarProps {
   alpacaNeedsSymbolHint?: boolean;
   activeAlpacaSymbol?: string | null;
   onRefreshAlpacaStatus: () => void;
-  activeSection: 'monitor' | 'specs' | 'roadmap' | 'paper';
-  onNavigate: (section: 'monitor' | 'specs' | 'roadmap' | 'paper') => void;
+  activeSection: 'monitor' | 'specs' | 'roadmap' | 'paper' | 'ai';
+  onNavigate: (section: 'monitor' | 'specs' | 'roadmap' | 'paper' | 'ai') => void;
   authSlot?: ReactNode;
 }
 
@@ -133,6 +133,17 @@ export function TopBar({
             }`}
           >
             Paper Trading
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('ai')}
+            className={`whitespace-nowrap shrink-0 pb-0.5 transition-colors duration-150 cursor-pointer ${
+              activeSection === 'ai'
+                ? 'text-emerald-300 border-b border-emerald-400'
+                : 'text-slate-400 hover:text-emerald-200'
+            }`}
+          >
+            AI Trader
           </button>
         </nav>
 

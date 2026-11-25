@@ -1,0 +1,289 @@
+{
+  "system": "Master Autonomous RL Trader",
+  "timestamp": "2026-11-26T02:45:57.586520",
+  "total_epochs": 40,
+  "target_achieved_epochs": 7,
+  "success_rate_pct": 17.5,
+  "history": [
+    {
+      "epoch": 1,
+      "ending_equity": 47165.19623160313,
+      "net_roi_pct": 371.65196231603124,
+      "target_achieved": true,
+      "max_drawdown_pct": 75.74780795190638
+    },
+    {
+      "epoch": 2,
+      "ending_equity": 2970.3329557474826,
+      "net_roi_pct": -70.29667044252518,
+      "target_achieved": false,
+      "max_drawdown_pct": 73.25819552375485
+    },
+    {
+      "epoch": 3,
+      "ending_equity": 2969.859124845718,
+      "net_roi_pct": -70.30140875154282,
+      "target_achieved": false,
+      "max_drawdown_pct": 87.08661174663536
+    },
+    {
+      "epoch": 4,
+      "ending_equity": 1429.284087320968,
+      "net_roi_pct": -85.70715912679032,
+      "target_achieved": false,
+      "max_drawdown_pct": 89.66219264856893
+    },
+    {
+      "epoch": 5,
+      "ending_equity": 2925.98878352021,
+      "net_roi_pct": -70.74011216479789,
+      "target_achieved": false,
+      "max_drawdown_pct": 87.60321813234168
+    },
+    {
+      "epoch": 6,
+      "ending_equity": 2247.6623006981044,
+      "net_roi_pct": -77.52337699301896,
+      "target_achieved": false,
+      "max_drawdown_pct": 96.05438678922536
+    },
+    {
+      "epoch": 7,
+      "ending_equity": 1089.6356038476497,
+      "net_roi_pct": -89.1036439615235,
+      "target_achieved": false,
+      "max_drawdown_pct": 97.49459574753234
+    },
+    {
+      "epoch": 8,
+      "ending_equity": 2753.705934625201,
+      "net_roi_pct": -72.46294065374799,
+      "target_achieved": false,
+      "max_drawdown_pct": 89.72262290285681
+    },
+    {
+      "epoch": 9,
+      "ending_equity": 2966.939665328708,
+      "net_roi_pct": -70.33060334671293,
+      "target_achieved": false,
+      "max_drawdown_pct": 82.7211162475745
+    },
+    {
+      "epoch": 10,
+      "ending_equity": 43574.53465174628,
+      "net_roi_pct": 335.7453465174628,
+      "target_achieved": true,
+      "max_drawdown_pct": 69.29175384522277
+    },
+    {
+      "epoch": 11,
+      "ending_equity": 2600.966197334308,
+      "net_roi_pct": -73.99033802665691,
+      "target_achieved": false,
+      "max_drawdown_pct": 80.72191168805469
+    },
+    {
+      "epoch": 12,
+      "ending_equity": 2877.504221403762,
+      "net_roi_pct": -71.22495778596239,
+      "target_achieved": false,
+      "max_drawdown_pct": 85.60372478797878
+    },
+    {
+      "epoch": 13,
+      "ending_equity": 833.118853319841,
+      "net_roi_pct": -91.6688114668016,
+      "target_achieved": false,
+      "max_drawdown_pct": 96.79178710456026
+    },
+    {
+      "epoch": 14,
+      "ending_equity": 2945.001303762645,
+      "net_roi_pct": -70.54998696237355,
+      "target_achieved": false,
+      "max_drawdown_pct": 87.85689957771635
+    },
+    {
+      "epoch": 15,
+      "ending_equity": 2915.7817219327626,
+      "net_roi_pct": -70.84218278067237,
+      "target_achieved": false,
+      "max_drawdown_pct": 86.73742552587655
+    },
+    {
+      "epoch": 16,
+      "ending_equity": 57312.25807891789,
+      "net_roi_pct": 473.1225807891789,
+      "target_achieved": true,
+      "max_drawdown_pct": 41.29663617726659
+    },
+    {
+      "epoch": 17,
+      "ending_equity": 2947.7193221849684,
+      "net_roi_pct": -70.52280677815031,
+      "target_achieved": false,
+      "max_drawdown_pct": 71.06816800518672
+    },
+    {
+      "epoch": 18,
+      "ending_equity": 2228.6357851029825,
+      "net_roi_pct": -77.71364214897018,
+      "target_achieved": false,
+      "max_drawdown_pct": 87.58486378613031
+    },
+    {
+      "epoch": 19,
+      "ending_equity": 2924.9463968964033,
+      "net_roi_pct": -70.75053603103598,
+      "target_achieved": false,
+      "max_drawdown_pct": 92.44324347483295
+    },
+    {
+      "epoch": 20,
+      "ending_equity": 2463.1190599739857,
+      "net_roi_pct": -75.36880940026013,
+      "target_achieved": false,
+      "max_drawdown_pct": 83.36484609780467
+    },
+    {
+      "epoch": 21,
+      "ending_equity": 2297.4225118944064,
+      "net_roi_pct": -77.02577488105592,
+      "target_achieved": false,
+      "max_drawdown_pct": 92.87417778306047
+    },
+    {
+      "epoch": 22,
+      "ending_equity": 2767.3833107074756,
+      "net_roi_pct": -72.32616689292524,
+      "target_achieved": false,
+      "max_drawdown_pct": 82.81768957032415
+    },
+    {
+      "epoch": 23,
+      "ending_equity": 2760.139127725769,
+      "net_roi_pct": -72.39860872274231,
+      "target_achieved": false,
+      "max_drawdown_pct": 85.40848275141742
+    },
+    {
+      "epoch": 24,
+      "ending_equity": 2959.281333516184,
+      "net_roi_pct": -70.40718666483815,
+      "target_achieved": false,
+      "max_drawdown_pct": 73.0277163359548
+    },
+    {
+      "epoch": 25,
+      "ending_equity": 2834.918135920153,
+      "net_roi_pct": -71.65081864079848,
+      "target_achieved": false,
+      "max_drawdown_pct": 87.50693188907724
+    },
+    {
+      "epoch": 26,
+      "ending_equity": 2944.0837433299525,
+      "net_roi_pct": -70.55916256670048,
+      "target_achieved": false,
+      "max_drawdown_pct": 70.74042963355755
+    },
+    {
+      "epoch": 27,
+      "ending_equity": 2409.3193045911457,
+      "net_roi_pct": -75.90680695408855,
+      "target_achieved": false,
+      "max_drawdown_pct": 80.71873834903658
+    },
+    {
+      "epoch": 28,
+      "ending_equity": 1534.9266620490507,
+      "net_roi_pct": -84.65073337950949,
+      "target_achieved": false,
+      "max_drawdown_pct": 90.85789129546103
+    },
+    {
+      "epoch": 29,
+      "ending_equity": 54371.86968867526,
+      "net_roi_pct": 443.71869688675264,
+      "target_achieved": true,
+      "max_drawdown_pct": 58.22747781795711
+    },
+    {
+      "epoch": 30,
+      "ending_equity": 2028.4349798204958,
+      "net_roi_pct": -79.71565020179504,
+      "target_achieved": false,
+      "max_drawdown_pct": 84.94395476975825
+    },
+    {
+      "epoch": 31,
+      "ending_equity": 1363.085764082849,
+      "net_roi_pct": -86.36914235917152,
+      "target_achieved": false,
+      "max_drawdown_pct": 89.88250492576984
+    },
+    {
+      "epoch": 32,
+      "ending_equity": 2997.0191644959873,
+      "net_roi_pct": -70.02980835504013,
+      "target_achieved": false,
+      "max_drawdown_pct": 77.75464506111696
+    },
+    {
+      "epoch": 33,
+      "ending_equity": 2762.2175448825965,
+      "net_roi_pct": -72.37782455117403,
+      "target_achieved": false,
+      "max_drawdown_pct": 79.42008709732592
+    },
+    {
+      "epoch": 34,
+      "ending_equity": 1850.696183124233,
+      "net_roi_pct": -81.49303816875766,
+      "target_achieved": false,
+      "max_drawdown_pct": 90.15842577377042
+    },
+    {
+      "epoch": 35,
+      "ending_equity": 18357.96952438222,
+      "net_roi_pct": 83.5796952438222,
+      "target_achieved": true,
+      "max_drawdown_pct": 73.57569539949768
+    },
+    {
+      "epoch": 36,
+      "ending_equity": 2275.3714224203377,
+      "net_roi_pct": -77.24628577579662,
+      "target_achieved": false,
+      "max_drawdown_pct": 85.19972167695403
+    },
+    {
+      "epoch": 37,
+      "ending_equity": 51047.594779057814,
+      "net_roi_pct": 410.4759477905781,
+      "target_achieved": true,
+      "max_drawdown_pct": 66.03769478822511
+    },
+    {
+      "epoch": 38,
+      "ending_equity": 33755.672963763674,
+      "net_roi_pct": 237.55672963763678,
+      "target_achieved": true,
+      "max_drawdown_pct": 77.27220109686743
+    },
+    {
+      "epoch": 39,
+      "ending_equity": 9674.008988007598,
+      "net_roi_pct": -3.2599101199240246,
+      "target_achieved": false,
+      "max_drawdown_pct": 78.15682765513932
+    },
+    {
+      "epoch": 40,
+      "ending_equity": 1028.2438598002154,
+      "net_roi_pct": -89.71756140199784,
+      "target_achieved": false,
+      "max_drawdown_pct": 93.70210249291918
+    }
+  ]
+}

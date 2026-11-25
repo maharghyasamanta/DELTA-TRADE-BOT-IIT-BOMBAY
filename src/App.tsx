@@ -39,6 +39,7 @@ import { PaperTradingWorkspace } from './components/paper/PaperTradingWorkspace'
 import { PhaseRoadmapStrip } from './components/PhaseRoadmapStrip';
 import { RegimePanel } from './components/RegimePanel';
 import { TopBar } from './components/TopBar';
+import { AIDashboard } from './components/AIDashboard';
 import type {
   AlpacaFeed,
   AlpacaStatusResponse,
@@ -65,7 +66,7 @@ interface ErrorState {
 }
 
 export default function App() {
-  const [activeSection, setActiveSection] = useState<'monitor' | 'specs' | 'roadmap' | 'paper'>('monitor');
+  const [activeSection, setActiveSection] = useState<'monitor' | 'specs' | 'roadmap' | 'paper' | 'ai'>('monitor');
   const [dataSource, setDataSource] = useState<MarketDataSource>('delta');
 
   // Health telemetry
@@ -517,10 +518,10 @@ export default function App() {
   const pendingSectionRef = useRef<'monitor' | 'specs' | 'roadmap' | null>(null);
 
   const handleNavigate = useCallback(
-    (section: 'monitor' | 'specs' | 'roadmap' | 'paper') => {
+    (section: 'monitor' | 'specs' | 'roadmap' | 'paper' | 'ai') => {
       const prevSection = activeSection;
       setActiveSection(section);
-      if (section === 'paper') {
+      if (section === 'paper' || section === 'ai') {
         pendingSectionRef.current = null;
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
@@ -530,7 +531,7 @@ export default function App() {
         setDataSource('delta');
         return;
       }
-      if (prevSection === 'paper') {
+      if (prevSection === 'paper' || prevSection === 'ai') {
         pendingSectionRef.current = section;
         return;
       }
@@ -681,7 +682,9 @@ export default function App() {
           </div>
         )}
 
-        {activeSection === 'paper' ? (
+        {activeSection === 'ai' ? (
+          <AIDashboard />
+        ) : activeSection === 'paper' ? (
           <PaperTradingWorkspace
             user={firebaseAuth.user}
             authReady={firebaseAuth.authReady}

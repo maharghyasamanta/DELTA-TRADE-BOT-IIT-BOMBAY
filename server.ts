@@ -9,6 +9,7 @@ import { createExplainRouter } from './server/routes/explain.ts';
 import { createPaperRouter } from './server/routes/paper.ts';
 import { startPaperBrokerLoop } from './server/paper/paperStore.ts';
 import { liveTradingStore } from './server/alpacaLiveStore.ts';
+import { createAiRouter } from './server/routes/ai.ts';
 import { executeWalkForwardTaskIfWorker } from './server/paper/walkForwardWorker.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -88,6 +89,7 @@ async function startServer(): Promise<void> {
   app.use('/api', createAlpacaRouter());
   app.use('/api', createExplainRouter());
   app.use('/api', createPaperRouter());
+  app.use('/api', createAiRouter());
   startPaperBrokerLoop();
 
   // Structured JSON error handler for body-parser & /api errors (prevents HTML responses)

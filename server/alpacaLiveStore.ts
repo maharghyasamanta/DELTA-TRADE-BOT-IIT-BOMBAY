@@ -222,7 +222,7 @@ export class LiveTradingStore {
         currentPosition,
         tickSizeNum,
         params: {
-          strategyId: 'brain_auto',
+          strategyId: 'brain_auto' as PaperStrategyParams['strategyId'],
           trendEntryThreshold: 0.2,
           stopVolMultiplier: 2.0,
           targetVolMultiplier: 3.0,
