@@ -8,6 +8,7 @@ import { createAlpacaRouter } from './server/routes/alpaca.ts';
 import { createExplainRouter } from './server/routes/explain.ts';
 import { createPaperRouter } from './server/routes/paper.ts';
 import { startPaperBrokerLoop } from './server/paper/paperStore.ts';
+import { liveTradingStore } from './server/alpacaLiveStore.ts';
 import { executeWalkForwardTaskIfWorker } from './server/paper/walkForwardWorker.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -169,6 +170,11 @@ async function startServer(): Promise<void> {
     console.log(
       `[RegimeSentinel] Server listening on http://0.0.0.0:${port} (mode=${isProd ? 'production' : 'development'})`,
     );
+
+    // Start fully automated trading engine (Brain + Alpaca Paper)
+    void liveTradingStore.startAutomation('SPY').catch((err) => {
+      console.error('[LiveTradingStore] Failed to start automation:', err instanceof Error ? err.message : err);
+    });
   });
 }
 
