@@ -29,6 +29,7 @@ import {
   formatAlpacaPrice,
 } from './alpacaTrading.ts';
 import { queryBrainDecision, BRAIN_CONFIGURED } from './brainClient.ts';
+import { checkDailyTargetLock } from './autonomousBrain.ts';
 
 export interface LiveDecisionResult {
   decision: StrategyDecision;
@@ -164,6 +165,25 @@ export class LiveTradingStore {
 
   async processCycle(): Promise<LiveDecisionResult> {
     try {
+      // Check if daily target is locked
+      const { locked, reason } = await checkDailyTargetLock();
+      if (locked) {
+        console.log(`[LiveTradingStore] ${reason}`);
+        // Flatten all positions if target achieved
+        const [, positions] = await Promise.all([
+          getAlpacaAccount(),
+          getAlpacaPositions(),
+        ]);
+        if (positions.length > 0) {
+          await closeAllAlpacaPositions();
+          console.log('[LiveTradingStore] All positions flattened due to daily target lock');
+        }
+        return {
+          decision: { action: 'FLAT', desiredSizeFractionBps: 0, stopLossOffsetTicks: null, takeProfitOffsetTicks: null, reason },
+          executed: true,
+          reason,
+        };
+      }
       // 1. Sync Alpaca account state
       const [account, positions] = await Promise.all([
         getAlpacaAccount(),

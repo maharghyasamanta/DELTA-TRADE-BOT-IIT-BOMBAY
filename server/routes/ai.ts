@@ -161,6 +161,7 @@ export function createAiRouter() {
     }
     let drawdown = typeof latestPerf?.max_drawdown_pct === 'number' ? latestPerf.max_drawdown_pct * 100 : 2.85;
     let todayNetProfit = typeof latestPerf?.net_profit_pct === 'number' ? latestPerf.net_profit_pct : -2.85;
+    let dailyTargetAchieved = Boolean(latestPerf?.target_achieved);
 
     try {
       const db = openDb();
@@ -176,6 +177,16 @@ export function createAiRouter() {
           .prepare('SELECT COUNT(*) AS wins FROM trades WHERE pnl > 0')
           .get() as { wins: number };
         winRate = tradeStats.total > 0 ? Number(((winStats.wins / tradeStats.total) * 100).toFixed(2)) : 0;
+
+        // Get today's daily performance from database
+        const today = new Date().toISOString().split('T')[0];
+        const daily = db
+          .prepare('SELECT net_profit_pct, target_achieved FROM daily_performance WHERE date = ?')
+          .get(today) as DailyPerfRow | undefined;
+        if (daily) {
+          todayNetProfit = daily.net_profit_pct;
+          dailyTargetAchieved = daily.target_achieved === 1;
+        }
         db.close();
       }
     } catch (err) {
@@ -190,7 +201,8 @@ export function createAiRouter() {
         drawdown,
         tradesCount,
         todayNetProfit,
-        targetAchieved: Boolean(latestPerf?.target_achieved),
+        targetAchieved: dailyTargetAchieved,
+        daily_target_achieved: dailyTargetAchieved,
         profitTargetPct: 10.0,
       },
       source: 'models/trader_memory.db & models/plots/',
@@ -545,6 +557,41 @@ export function createAiRouter() {
       source: 'models/rl_training_data.json & simulated bars',
       fetchedAt: new Date().toISOString(),
     });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* 9. GET /api/ai/aux-signals - Local ML/RL auxiliary signals */
+  /* ------------------------------------------------------------------ */
+  router.get('/ai/aux-signals', async (_req: Request, res: Response) => {
+    try {
+      const { getAuxiliarySignals } = await import('../autonomousBrain.ts');
+      const signals = getAuxiliarySignals();
+
+      res.json({
+        success: true,
+        data: {
+          mlProbability: signals.ml_probability,
+          rlQValue: signals.rl_q_value,
+          rlAction: signals.rl_action,
+          rlActionLabel: ['HOLD', 'LONG', 'SHORT', 'FLATTEN'][signals.rl_action] ?? 'HOLD',
+          dailyNetPct: signals.daily_net_pct,
+          targetLocked: signals.target_locked,
+          targetPct: 10.0,
+        },
+        source: 'models/trader_memory.db (autonomousBrain)',
+        fetchedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('[AI Router] Aux signals failed:', err);
+      res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Failed to fetch auxiliary signals',
+        code: 'AUX_SIGNALS_FAILED',
+        status: 500,
+        source: 'Autonomous Brain',
+        timestamp: new Date().toISOString(),
+      });
+    }
   });
 
   return router;
